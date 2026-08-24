@@ -20,7 +20,7 @@ Still open under this heading: nothing blocking. Revisit only if the weekly
 refresh becomes annoying enough to justify €99/yr — at which point compare
 TestFlight rather than assuming sideloading.
 
-### ~~2. Where the IPA is hosted~~ — SETTLED: over the tailnet
+### ~~2. Where the IPA is hosted~~ — SETTLED: over the tailnet *(applies only to the deferred native fork)*
 AltStore must fetch the source JSON and the `.ipa` from the phone, and
 **private-repo release assets require auth**, which AltStore does not send. The
 usual workaround is making the repo public.
@@ -65,6 +65,10 @@ and a push relay is accepted, native becomes the better tool. The AltStore
 plumbing (source manifest, release script, schema tests) is already in place
 and stays valid — this is a fork in the road, not a discarded branch.
 
+**CORRECTED 2026-08-24 — see decision 5.** The original framing here treated
+the app as tailnet-only and therefore useless when disconnected. That was
+wrong, and the owner caught it.
+
 Consequence that shapes the code: because disconnection is the NORMAL state,
 every read is cached and rendered **with its age**. Showing a two-day-old
 "all services healthy" as if current is the false-clean failure the parent repo
@@ -73,9 +77,50 @@ UI must distinguish them.
 
 ---
 
+### 5. Two tiers — internet-only, plus more on the tailnet
+**Corrects an assumption baked into decisions 2 and 4.**
+
+I designed as if the app were tailnet-only, which made it a brick whenever
+Tailscale was off. The owner's objection: most Toolbelt tools need the internet
+anyway, so an app that only works on the tailnet has the dependency backwards.
+
+The confusion was mine: the tools that need internet need the GATEWAY's
+internet, not the phone's. `pluto-kali` already has connectivity and does that
+work on the owner's behalf. But it is still true that an app which does nothing
+without a VPN is the wrong product.
+
+So the app has two tiers and degrades on purpose:
+
+| tier | needs | provides |
+|---|---|---|
+| internet only | any connection | market data, RSS, AI — public APIs called directly. No VPN. |
+| + tailnet | Tailscale on | local service health, alert inbox, gateway safe-lane control |
+
+Consequences:
+- The PWA is served **publicly** (it is static files — nothing sensitive) so it
+  loads without the tailnet. Decision 2's tailnet-only hosting applied to the
+  AltStore `.ipa`, and is moot now that the native fork is deferred.
+- **The gateway is NOT exposed.** No Funnel, no tunnel, no port-forward. The
+  tailnet tier simply fails to the cached/none states already built.
+- Any public API the app calls directly needs its key ON THE PHONE. That is a
+  real trade: a phone key is easier to lose than a desktop vault entry. Use
+  read-only keys where the provider offers them, and never the trading
+  credentials — Bitvavo keys stay on the desktop, withdrawal-disabled, as they
+  already are.
+
+Worth recording for later: the gateway binds to 127.0.0.1 by default and
+REFUSES to start on a non-loopback address without auth, with HMAC signing and
+nonce replay protection. It was built anticipating exposure — so Tailscale
+Funnel remains a viable future option. Deliberately not taken now: exposing the
+gateway is the owner's call, not something to switch on while they are away.
+
+---
+
 ## SETTLED
 
-### Talks to the existing gateway, no new server
+### Talks to the existing gateway, no new server — *tailnet tier only*
+**Amended by decision 5:** this holds for the tailnet tier. The internet-only
+tier calls public APIs directly and does not involve the gateway at all.
 The Toolbelt gateway already runs on `:3847` and exposes a safe lane of ~10
 read-only actions, reachable over Tailscale. Standing up a second backend for
 the phone would mean a second auth surface to get right. Reuse it.
