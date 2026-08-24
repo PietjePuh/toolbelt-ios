@@ -30,9 +30,16 @@ packages:
   # Official VLC for iOS framework. Chosen over AVPlayer because it plays
   # essentially any container/codec without transcoding — which is the entire
   # reason to have a separate player rather than using the system one.
+  # Pinned to an exact REVISION, not a version range. VLCKit tags look like
+  # `4.0.0a21` — a letter in the patch position, which is not valid semver, so
+  # SPM and XcodeGen reject it outright ("Invalid version: 4.0.0a2"). A commit
+  # pin is also the more defensible choice: it is reproducible, and it cannot
+  # move under us the way a range can.
+  #
+  # e8ed62f = tag 4.0.0a21. Bump deliberately, and re-run CI when you do.
   VLCKit:
     url: https://github.com/videolan/vlckit
-    from: "4.0.0a2"
+    revision: e8ed62f40c87dd5c5ed73812da8fa6a7bc1e58aa
 
 targets:
   Toolbelt:
