@@ -1,0 +1,96 @@
+name: Build (unsigned IPA)
+
+# Why a GitHub-hosted macOS runner and not the self-hosted ones: producing an
+# .ipa requires macOS + Xcode, and both self-hosted runners (kali-toolbelt,
+# titan-toolbelt) are Linux. There is no supported Linux path.
+#
+# COST: macOS minutes bill at a 10x multiplier on PRIVATE repos. This workflow
+# is therefore manual + PR-only by design — it deliberately does NOT run on
+# every push to main. If this repo is ever made public, macOS minutes are free
+# and that restraint can be relaxed.
+#
+# The artifact is an UNSIGNED .ipa. Signing route is still undecided
+# (AltStore/SideStore vs paid developer account vs TrollStore) — see README.
+# An unsigned build is what AltStore/SideStore expect to resign anyway, so this
+# stays useful under two of the three routes.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'App/**'
+      - '*.xcodeproj/**'
+      - '.github/workflows/build.yml'
+
+concurrency:
+  group: build-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build unsigned .ipa
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Guard — is there anything to build yet?
+        id: guard
+        run: |
+          set -euo pipefail
+          # The scaffold has no Xcode project yet. Say so plainly and stop with
+          # a green result rather than failing loudly on an empty repo — a red
+          # check on "nothing built yet" trains people to ignore this workflow.
+          if ! ls -d *.xcodeproj *.xcworkspace >/dev/null 2>&1; then
+            echo "no-project=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::No .xcodeproj yet — scaffold only. Skipping the build."
+            exit 0
+          fi
+          echo "no-project=false" >> "$GITHUB_OUTPUT"
+
+      - name: Build archive
+        if: steps.guard.outputs.no-project == 'false'
+        run: |
+          set -euo pipefail
+          SCHEME="$(xcodebuild -list -json | python3 -c 'import json,sys;print(json.load(sys.stdin)["project"]["schemes"][0])')"
+          echo "Building scheme: $SCHEME"
+          # CODE_SIGNING_ALLOWED=NO is what makes this work with no certificate,
+          # no provisioning profile and no Apple account in CI.
+          xcodebuild \
+            -scheme "$SCHEME" \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath build/Toolbelt.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            archive
+
+      - name: Package unsigned .ipa
+        if: steps.guard.outputs.no-project == 'false'
+        run: |
+          set -euo pipefail
+          # An .ipa is just a zip with the .app inside Payload/. Doing it by
+          # hand avoids `xcodebuild -exportArchive`, which insists on a signing
+          # identity even for development export.
+          mkdir -p build/Payload
+          cp -R build/Toolbelt.xcarchive/Products/Applications/*.app build/Payload/
+          (cd build && zip -qry Toolbelt-unsigned.ipa Payload)
+          ls -lh build/Toolbelt-unsigned.ipa
+
+      - name: Upload artifact
+        if: steps.guard.outputs.no-project == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Toolbelt-unsigned-ipa
+          path: build/Toolbelt-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
