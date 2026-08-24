@@ -140,4 +140,101 @@ final class FeedParserTests: XCTestCase {
         XCTAssertEqual(feed.title, "Wrapped & Escaped")
         XCTAssertEqual(feed.items.first?.title, "Item One")
     }
+
+    // MARK: - the gaps found on review
+
+    func testItunesTitleDoesNotOverwriteItemTitle() throws {
+        // The bug this pins: with XML namespace processing ON, XMLParser hands
+        // the delegate the LOCAL name, so <itunes:title> arrives as "title" and
+        // clobbers the real one. Podcast feeds carry one in nearly every item,
+        // so this would have been wrong for most real podcasts.
+        let feed = try FeedParser.parse(Data("""
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+        <channel><title>Show</title>
+          <item>
+            <title>Real Title</title>
+            <itunes:title>Short Title</itunes:title>
+            <link>https://e.example/1</link>
+          </item>
+        </channel></rss>
+        """.utf8))
+        XCTAssertEqual(feed.items.first?.title, "Real Title")
+    }
+
+    func testGuidIsCapturedAndDrivesIdentity() throws {
+        // Some feeds rewrite links between fetches while the guid stays put, so
+        // guid wins for identity — otherwise read/unread state resets.
+        let feed = try FeedParser.parse(Data("""
+        <rss version="2.0"><channel><title>x</title>
+          <item><title>T</title><guid>urn:uuid:abc</guid><link>https://e.example/1</link></item>
+        </channel></rss>
+        """.utf8))
+        XCTAssertEqual(feed.items.first?.guid, "urn:uuid:abc")
+        XCTAssertEqual(feed.items.first?.id, "urn:uuid:abc")
+    }
+
+    func testRelativeLinkResolvesAgainstFeedURL() throws {
+        let base = URL(string: "https://news.example/feed.xml")!
+        let feed = try FeedParser.parse(Data("""
+        <rss version="2.0"><channel><title>x</title>
+          <item><title>T</title><link>/article/1</link></item>
+        </channel></rss>
+        """.utf8), baseURL: base)
+        XCTAssertEqual(feed.items.first?.link?.absoluteString, "https://news.example/article/1")
+    }
+
+    func testRelativeLinkWithoutBaseIsDroppedNotKeptBroken() throws {
+        // A host-less URL looks fine in a struct and fails silently when tapped.
+        let feed = try FeedParser.parse(Data("""
+        <rss version="2.0"><channel><title>x</title>
+          <item><title>T</title><link>/article/1</link></item>
+        </channel></rss>
+        """.utf8))
+        XCTAssertNil(feed.items.first?.link)
+    }
+
+    func testItunesDurationForms() {
+        XCTAssertEqual(FeedParser.Delegate.parseDuration("3723"), 3723)
+        XCTAssertEqual(FeedParser.Delegate.parseDuration("62:03"), 3723)
+        XCTAssertEqual(FeedParser.Delegate.parseDuration("1:02:03"), 3723)
+        XCTAssertNil(FeedParser.Delegate.parseDuration("about an hour"))
+        XCTAssertNil(FeedParser.Delegate.parseDuration("1:2:3:4"))
+    }
+
+    func testArtworkFallsBackToChannel() throws {
+        let feed = try FeedParser.parse(Data("""
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+        <channel><title>Show</title>
+          <itunes:image href="https://cdn.example/show.jpg"/>
+          <item><title>Ep</title><enclosure url="https://cdn.example/1.mp3" type="audio/mpeg"/></item>
+        </channel></rss>
+        """.utf8))
+        XCTAssertEqual(feed.artwork?.absoluteString, "https://cdn.example/show.jpg")
+        XCTAssertEqual(feed.items.first?.artwork?.absoluteString, "https://cdn.example/show.jpg")
+    }
+
+    func testChannelImageBlockDoesNotBecomeTheFeedTitle() throws {
+        // <image> in an RSS channel has its own <title> and <link>.
+        let feed = try FeedParser.parse(Data("""
+        <rss version="2.0"><channel>
+          <image><url>https://cdn.example/logo.png</url><title>Logo Alt Text</title></image>
+          <title>Real Feed Title</title>
+        </channel></rss>
+        """.utf8))
+        XCTAssertEqual(feed.title, "Real Feed Title")
+        XCTAssertEqual(feed.artwork?.absoluteString, "https://cdn.example/logo.png")
+    }
+
+    func testMediaRSSContentBecomesVideo() throws {
+        let feed = try FeedParser.parse(Data("""
+        <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel><title>Vids</title>
+          <item><title>V</title>
+            <media:content url="https://cdn.example/v.mp4" type="video/mp4"/>
+          </item>
+        </channel></rss>
+        """.utf8))
+        XCTAssertTrue(feed.items.first?.media?.isVideo == true)
+        XCTAssertFalse(feed.isPodcast, "video is not audio")
+    }
 }
