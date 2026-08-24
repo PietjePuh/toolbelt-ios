@@ -165,6 +165,7 @@ struct FeedItemsView: View {
     let subscription: Subscription
     let loader: FeedLoader
 
+    @State private var feedTitle = ""
     @State private var items: [FeedParser.Item] = []
     @State private var error: FeedLoader.LoadError?
     @State private var loading = true
@@ -191,7 +192,13 @@ struct FeedItemsView: View {
             } else {
                 List(items) { item in
                     Button {
-                        openURL = item.link
+                        // An episode plays; an article opens. Decided by what
+                        // the item carries, not by which section it sits in.
+                        if let episode = PlaybackItem(episode: item, feedTitle: feedTitle) {
+                            AudioPlayer.shared.play(episode)
+                        } else {
+                            openURL = item.link
+                        }
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.title).font(.body)
@@ -211,7 +218,7 @@ struct FeedItemsView: View {
                             }
                         }
                     }
-                    .disabled(item.link == nil)
+                    .disabled(item.link == nil && item.media?.isAudio != true)
                 }
             }
         }
@@ -227,7 +234,9 @@ struct FeedItemsView: View {
         error = nil
         defer { loading = false }
         do {
-            items = try await loader.load(subscription.url).items
+            let feed = try await loader.load(subscription.url)
+            feedTitle = feed.title.isEmpty ? subscription.title : feed.title
+            items = feed.items
         } catch let e as FeedLoader.LoadError {
             error = e
             items = []

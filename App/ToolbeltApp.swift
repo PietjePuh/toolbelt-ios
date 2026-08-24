@@ -16,8 +16,17 @@ struct ToolbeltApp: App {
 
 struct RootView: View {
     let gateway: Gateway
+    @StateObject private var player = AudioPlayer.shared
 
     var body: some View {
+        VStack(spacing: 0) {
+            tabs
+            // Outside the TabView so playback survives switching tabs.
+            NowPlayingBar(player: player)
+        }
+    }
+
+    private var tabs: some View {
         TabView {
             DomainScanView(scanner: DomainScanner(gateway: gateway))
                 .tabItem { Label("Scan", systemImage: "magnifyingglass") }
@@ -34,10 +43,10 @@ struct RootView: View {
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
 
-            // Feeds, watchlist and finance land here as each one works end to
-            // end. Deliberately not stubbed with placeholder tabs: an empty tab
-            // that looks like a feature is the "cosmetic thing that does not
-            // work" the parent repo just spent a PR deleting.
+            // Live TV, the terminal and finance land here as each one works end
+            // to end. Deliberately not stubbed with placeholder tabs: an empty
+            // tab that looks like a feature is the "cosmetic thing that does
+            // not work" the parent repo just spent a PR deleting.
         }
     }
 }
