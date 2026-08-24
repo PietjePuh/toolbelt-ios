@@ -24,14 +24,30 @@ final class WatchTitleTests: XCTestCase {
     }
 
     func testTitleWithSpecialCharactersIsEncoded() {
+        // "Tom & Jerry" is the case that matters: an unencoded ampersand splits
+        // the query into an extra parameter, so IMDb searches for half the name.
         let t = WatchTitle(id: 1, kind: .series, name: "Tom & Jerry: 100% Fun?")
         let url = t.imdbLink.url
-        let rawQuery = URLComponents(url: url, resolvingAgainstBaseURL: false)?.query ?? ""
-        XCTAssertFalse(rawQuery.contains(" "), "unencoded space in the query")
-        // …and it round-trips back to exactly what we asked for.
-        let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-            .queryItems?.first { $0.name == "q" }?.value
-        XCTAssertEqual(q, "Tom & Jerry: 100% Fun?")
+
+        let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedQuery ?? ""
+        XCTAssertFalse(raw.contains(" "), "unencoded space: \(raw)")
+        XCTAssertEqual(raw.filter { $0 == "&" }.count, 1, "the & in the title leaked as a separator")
+
+        // The decoded value must be exactly what we asked for, and `s=tt` must
+        // survive as its own parameter.
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(items.first { $0.name == "q" }?.value, "Tom & Jerry: 100% Fun?")
+        XCTAssertEqual(items.first { $0.name == "s" }?.value, "tt")
+    }
+
+    func testPlusInTitleSurvivesAsAPlus() {
+        // A bare + in a query is decoded as a space by many servers, so it has
+        // to be escaped or "50+" silently becomes "50 ".
+        let t = WatchTitle(id: 1, kind: .movie, name: "50+ Films")
+        let raw = URLComponents(url: t.imdbLink.url, resolvingAgainstBaseURL: false)?
+            .percentEncodedQuery ?? ""
+        XCTAssertTrue(raw.contains("%2B"), "plus not escaped: \(raw)")
     }
 
     func testMalformedIMDbIDIsRefusedNotPastedIntoAURL() {

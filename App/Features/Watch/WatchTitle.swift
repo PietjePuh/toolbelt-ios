@@ -68,11 +68,13 @@ public struct WatchTitle: Equatable, Sendable, Identifiable {
         if let tt = Self.normaliseIMDbID(imdbID) {
             return .exact(URL(string: "https://www.imdb.com/title/\(tt)/")!)
         }
+        // Encoded explicitly rather than via `queryItems`, whose setter leaves
+        // some sub-delimiters alone — an ampersand in a title ("Tom & Jerry")
+        // would otherwise split the query into an extra parameter and search
+        // for half the name.
         var comps = URLComponents(string: "https://www.imdb.com/find/")!
-        comps.queryItems = [
-            .init(name: "q", value: year.map { "\(name) \($0)" } ?? name),
-            .init(name: "s", value: "tt")
-        ]
+        let term = year.map { "\(name) \($0)" } ?? name
+        comps.percentEncodedQuery = "q=\(Self.encodeQueryValue(term))&s=tt"
         return .search(comps.url!)
     }
 
@@ -85,6 +87,18 @@ public struct WatchTitle: Equatable, Sendable, Identifiable {
         let digits = s.dropFirst(2)
         guard !digits.isEmpty, digits.allSatisfy(\.isNumber) else { return nil }
         return s
+    }
+
+    /// Query-value encoding that also escapes the sub-delimiters which would
+    /// change the SHAPE of the query rather than just its content.
+    static let queryValueAllowed: CharacterSet = {
+        var set = CharacterSet.urlQueryAllowed
+        set.remove(charactersIn: "&+=?#")
+        return set
+    }()
+
+    static func encodeQueryValue(_ s: String) -> String {
+        s.addingPercentEncoding(withAllowedCharacters: queryValueAllowed) ?? ""
     }
 
     static func year(from dateString: String?) -> Int? {
