@@ -171,6 +171,39 @@ users, §6 stops being a style rule and becomes what keeps this clear of
 investment-advice regulation in the EU. Transparent indicators with their
 numbers; never an invented price target; never a recommendation to buy.
 
+### 9. Torrent + magnet, and a VLC-based player
+Requested by the owner. Both are a good fit for a SIDELOADED app specifically:
+**the App Store bans torrent clients**, so this is something an App Store app
+cannot ship at all. Same shape as the domain scanner — it exists because this
+does not go through Apple.
+
+**The constraint that will disappoint, stated up front:** iOS suspends apps
+shortly after backgrounding, and Apple has tightened this further in recent
+releases — persistent connections and frequent wakeups are flagged as excessive
+and throttled without telling the user. BitTorrent is exactly that shape. So
+**downloads only progress while the app is open.** That is the platform, not
+something to engineer around, and the UI must say so rather than let someone
+background the app and return to a stalled transfer wondering why.
+
+`BGContinuedProcessingTask` (iOS 26) exists for user-initiated long jobs with
+system-visible progress and may extend this, but it is far above the iOS 17
+deployment floor. Revisit if the floor rises.
+
+**Playback is different.** Audio is an approved background mode, so the player
+keeps playing with the screen off. No such exemption exists for downloading.
+
+Order of work: **player first**. VLCKit is a well-supported framework and plays
+essentially anything, which is the whole reason to use it over AVPlayer. The
+torrent engine is a much larger integration — there is no mature pure-Swift
+BitTorrent stack, so it means libtorrent (C++) and the biggest dependency in
+the project by a wide margin.
+
+**On what people use it for:** a torrent client is neutral software with
+entirely legitimate uses. It is worth being aware that publishing one under
+your name, paired with a media player, invites assumptions — that is the
+owner's call as publisher, not a technical question, and it is recorded here
+only so the decision is a deliberate one.
+
 ---
 
 ## SETTLED

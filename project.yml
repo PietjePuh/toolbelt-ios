@@ -26,10 +26,20 @@ settings:
     ENABLE_USER_SCRIPT_SANDBOXING: "YES"
     SWIFT_STRICT_CONCURRENCY: complete
 
+packages:
+  # Official VLC for iOS framework. Chosen over AVPlayer because it plays
+  # essentially any container/codec without transcoding — which is the entire
+  # reason to have a separate player rather than using the system one.
+  VLCKit:
+    url: https://github.com/videolan/vlckit
+    from: "4.0.0a2"
+
 targets:
   Toolbelt:
     type: application
     platform: iOS
+    dependencies:
+      - package: VLCKit
     sources:
       - path: App
         excludes:
@@ -43,6 +53,14 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # Audio is an APPROVED background mode, so playback continues with the
+        # screen off. There is deliberately no `fetch` or `processing` mode
+        # here: downloads do not get an exemption, and declaring one we cannot
+        # honour would be a lie to both the user and the OS.
+        UIBackgroundModes:
+          - audio
         # The scanner and feeds talk to arbitrary third-party hosts over
         # HTTPS. No ATS exception is declared: everything this app fetches
         # must be https, and a host that cannot do TLS is a result worth
