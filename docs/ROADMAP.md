@@ -51,6 +51,22 @@ sits broken.
 - [x] Watch list — trending/upcoming films and series from TMDB, deep-linking
       to IMDb. The user brings their own free TMDB key; none is shipped.
 
+- [x] Configuration — `AppSettings` persisted with tolerant decoding (missing
+      keys default, unknown/out-of-range values are corrected not rejected), so
+      adding a field in a later version cannot silently reset every other
+      preference.
+- [x] Secrets — Keychain, this device only, never synced, behind a protocol so
+      the rules are testable on an unsigned host.
+- [x] Feeds — news + podcasts end to end. Empty by default; suggestions are
+      offered, never applied.
+- [x] Player — podcasts and radio, lock-screen controls, background audio.
+      Live streams get no scrubber, since a stream has no end.
+- [x] Live TV — M3U playlists, groups, search. AVPlayer for HLS/MP4 (keeps
+      AirPlay + PiP), VLC for TS/MKV/AVI/RTSP. Unsupported streams are named
+      with the reason BEFORE the user taps.
+- [x] Cellular guard — the WiFi-only setting actually enforces, with a
+      one-time override.
+
 ## Next, in order
 
 ### 1. In-app browser  ← cheapest real feature
@@ -74,7 +90,7 @@ also the first settings screen — so it decides where user config lives.
 Note for whoever builds it: `notConfigured`, `keyRejected` and an empty result
 are three different states and must read as three different things on screen.
 
-### 3. Finance glance
+### 3. Finance glance  ← next
 Read-only. Watchlist + last price from public market data. **No trading, ever** —
 the desktop trader's guarantees hold because there is exactly one path to an
 order. Indicators shown with their numbers; no price targets, no

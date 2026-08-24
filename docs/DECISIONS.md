@@ -233,3 +233,47 @@ reach, and they are gated to extension pages for good reason.
 ### Builds run on GitHub-hosted macOS
 Both self-hosted runners are Linux. No local Xcode exists anywhere in this
 setup. Verified, not assumed.
+
+## 10. AVPlayer for audio and HLS; VLC only for what AVPlayer cannot open
+
+VLCKit plays everything, so the tempting choice is to use it for all playback
+and have one code path. That would be worse.
+
+AVPlayer is not merely "the built-in option" — it is the only path that gets
+background audio, lock-screen controls, AirPlay and picture-in-picture. Those
+are not extras on a phone; for a podcast they are most of the feature. Routing
+HLS through VLC would surrender all of them to solve a problem HLS does not
+have.
+
+So the split is by capability, not by preference: HLS and MP4 go to AVPlayer,
+and MPEG-TS / MKV / AVI / RTSP — the containers AVPlayer genuinely will not
+open — go to VLC. Which engine runs is invisible to the user.
+
+UDP/RTP multicast is refused by BOTH, and the wording is deliberate: VLC
+decodes it fine, it simply cannot cross the internet. Calling that
+"unsupported" would send someone looking for a codec fix to a network problem.
+
+## 11. A setting that does not enforce is worse than no setting
+
+"Stream video on cellular" shipped in the first settings pass changing no
+behaviour. That is the same defect the parent project spent a change removing
+under the name "cosmetic things that do not work" — and it is worse in
+settings than anywhere else, because the user has been invited to make a
+decision the app then ignores.
+
+The rule now lives in one pure function that both the player and the UI read,
+so they cannot disagree, and there is a one-time override on the blocking
+screen: a hard block during a live event is its own kind of bad.
+
+## 12. Guards that can silently disable themselves need a canary
+
+`#if canImport(VLCKit)` is correct — it keeps HLS and MP4 working if the
+dependency is ever unavailable. But it also means a green build can mean
+"VLCKit failed to resolve, the fallback branch compiled, and none of the VLC
+code was ever built" — with CI reporting success either way.
+
+Any conditional-compilation guard around a real feature gets an assertion that
+the feature is actually compiled in. A check that could not be performed must
+not read as a pass; that rule applies to the build itself, not only to
+scanners.
+
