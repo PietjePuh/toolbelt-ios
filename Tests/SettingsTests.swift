@@ -171,3 +171,19 @@ final class CellularGuardTests: XCTestCase {
         XCTAssertFalse(NetworkStatus.shouldBlockVideo(connection: .none, allowCellular: false))
     }
 }
+
+final class VLCEngineAvailabilityTests: XCTestCase {
+
+    func testVLCEngineIsActuallyCompiledIn() {
+        // Without this, the build is green in a way that means nothing: the
+        // surface sits behind `#if canImport(VLCKit)`, so if the dependency
+        // ever failed to resolve, the compiler would quietly take the fallback
+        // branch and NONE of the VLC code would be compiled — while CI still
+        // reported success. This turns that silent downgrade into a failure.
+        //
+        // If this ever goes red, MKV/TS/RTSP channels stopped playing; the
+        // fix is the VLCKit pin in project.yml, not this test.
+        XCTAssertTrue(vlcEngineAvailable,
+                      "VLCKit did not resolve — MKV/TS/RTSP channels will not play")
+    }
+}
