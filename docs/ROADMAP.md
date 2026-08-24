@@ -38,6 +38,18 @@ sits broken.
       "remember instead" needs an explicit forget.
 - [x] Magnet parsing — v1/v2 hex, base32, hybrid links; `dn` treated as data.
 - [x] CI: XcodeGen → build → test → unsigned `.ipa` → release on `v*` tag.
+      Now also runs **on push to main** — it previously ran only on tags, PRs
+      and manual dispatch, so commits landed on main uncompiled. A compile
+      error and a parser bug that lost every M3U attribute were both sitting
+      there; turning the trigger on found both within one commit.
+- [x] M3U / IPTV playlist parsing — attributes, groups, logos; `file:` refused.
+- [x] RSS + Atom parsing, covering **podcasts** (audio enclosures) and video
+      feeds (Media RSS). No entity expansion, size cap, relative links resolved
+      against the feed URL, unparsable dates stay nil.
+- [x] In-app browser — scheme allow-list enforced twice (address bar and
+      `decidePolicyFor`), non-persistent data store, host always visible.
+- [x] Watch list — trending/upcoming films and series from TMDB, deep-linking
+      to IMDb. The user brings their own free TMDB key; none is shipped.
 
 ## Next, in order
 
@@ -46,11 +58,21 @@ sits broken.
 Needs: back/forward/reload, the URL visible at all times (a browser that hides
 what it is showing is a phishing aid), and no persistent cookie store by default.
 
-### 2. RSS
-Feed list + item list + open-in-browser. Reuses the gateway. Parsing untrusted
-XML from arbitrary hosts, so: no entity expansion, size cap, and a malformed
-feed reports as malformed rather than rendering an empty list that reads as
-"no news".
+### 2. RSS + podcasts UI  ← parser done, the UI is what is left
+Feed list + item list + open-in-browser, and for feeds with audio enclosures,
+hand the URL to the player instead. `FeedParser.isPodcast` decides that from
+what the items actually carry rather than from how the user filed the feed.
+
+Storage of the subscribed feed list is the open question — it is the first
+thing in this app that has to persist anything.
+
+### 2b. Watch UI  ← catalogue + IMDb linking done
+Four shelves (trending films, trending series, in cinemas soon, airing now),
+poster grid, tap → IMDb. Needs a settings screen for the TMDB key, which is
+also the first settings screen — so it decides where user config lives.
+
+Note for whoever builds it: `notConfigured`, `keyRejected` and an empty result
+are three different states and must read as three different things on screen.
 
 ### 3. Finance glance
 Read-only. Watchlist + last price from public market data. **No trading, ever** —
