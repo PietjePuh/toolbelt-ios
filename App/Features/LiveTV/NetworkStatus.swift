@@ -29,7 +29,11 @@ public final class NetworkStatus: ObservableObject {
         monitor.start(queue: DispatchQueue(label: "nl.pietjepuh.toolbelt.network"))
     }
 
-    static func classify(_ path: NWPath) -> Connection {
+    /// `nonisolated` deliberately: this is a pure function, and it is called
+    /// from NWPathMonitor's background queue. Inheriting the class's
+    /// main-actor isolation would make that call illegal under strict
+    /// concurrency — correctly, since nothing here touches actor state.
+    nonisolated static func classify(_ path: NWPath) -> Connection {
         guard path.status == .satisfied else { return .none }
         if path.usesInterfaceType(.wifi) { return .wifi }
         if path.usesInterfaceType(.wiredEthernet) { return .wired }
@@ -40,7 +44,8 @@ public final class NetworkStatus: ObservableObject {
     }
 
     /// The rule, in one place so the player and the UI cannot disagree.
-    public static func shouldBlockVideo(connection: Connection, allowCellular: Bool) -> Bool {
+    /// Pure, so it is callable from anywhere — including tests.
+    public nonisolated static func shouldBlockVideo(connection: Connection, allowCellular: Bool) -> Bool {
         connection.isMetered && !allowCellular
     }
 }
