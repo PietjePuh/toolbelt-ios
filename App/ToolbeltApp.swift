@@ -22,6 +22,9 @@ struct RootView: View {
             DomainScanView(scanner: DomainScanner(gateway: gateway))
                 .tabItem { Label("Scan", systemImage: "magnifyingglass") }
 
+            FeedsView(gateway: gateway)
+                .tabItem { Label("Feeds", systemImage: "dot.radiowaves.up.forward") }
+
             WatchView(gateway: gateway)
                 .tabItem { Label("Watch", systemImage: "film") }
 
