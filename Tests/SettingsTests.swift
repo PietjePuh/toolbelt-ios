@@ -118,11 +118,21 @@ final class StreamSupportTests: XCTestCase {
         XCTAssertTrue(reason.lowercased().contains("network"))
     }
 
-    func testRawTransportStreamIsUnsupported() {
-        guard case .unsupported(let reason) = StreamSupport.assess(URL(string: "https://p.example/live/1.ts")!) else {
-            return XCTFail("expected unsupported")
+    func testContainersAVPlayerCannotOpenGoToVLC() {
+        // The reason VLCKit is a dependency at all.
+        for raw in ["https://p.example/live/1.ts", "https://p.example/f.mkv",
+                    "https://p.example/f.avi", "rtsp://p.example/stream"] {
+            let support = StreamSupport.assess(URL(string: raw)!)
+            XCTAssertTrue(support.usesVLC, "\(raw) should route to VLC")
+            XCTAssertTrue(support.canAttempt, "\(raw) is playable, just not by AVPlayer")
         }
-        XCTAssertTrue(reason.contains("TS"))
+    }
+
+    func testNativeContainersDoNotGoToVLC() {
+        // HLS through AVPlayer keeps AirPlay, PiP and the system controls.
+        for raw in ["https://p.example/live.m3u8", "https://p.example/f.mp4"] {
+            XCTAssertFalse(StreamSupport.assess(URL(string: raw)!).usesVLC, raw)
+        }
     }
 
     func testExtensionlessURLIsWorthTryingNotRejected() {
@@ -139,7 +149,25 @@ final class StreamSupportTests: XCTestCase {
             .supported)
     }
 
-    func testRTSPIsUnsupported() {
-        XCTAssertFalse(StreamSupport.assess(URL(string: "rtsp://p.example/s")!).canAttempt)
+}
+
+final class CellularGuardTests: XCTestCase {
+
+    func testWiFiOnlyBlocksCellularAndNothingElse() {
+        // A setting that enforces nothing is cosmetic UI, which this project
+        // has already spent a change removing.
+        XCTAssertTrue(NetworkStatus.shouldBlockVideo(connection: .cellular, allowCellular: false))
+        XCTAssertFalse(NetworkStatus.shouldBlockVideo(connection: .wifi, allowCellular: false))
+        XCTAssertFalse(NetworkStatus.shouldBlockVideo(connection: .wired, allowCellular: false))
+    }
+
+    func testAllowingCellularUnblocksIt() {
+        XCTAssertFalse(NetworkStatus.shouldBlockVideo(connection: .cellular, allowCellular: true))
+    }
+
+    func testOfflineIsNotTreatedAsMetered() {
+        // Being offline is a different failure, and must not be reported as
+        // "you are on mobile data".
+        XCTAssertFalse(NetworkStatus.shouldBlockVideo(connection: .none, allowCellular: false))
     }
 }

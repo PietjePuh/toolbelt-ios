@@ -9,8 +9,12 @@ import Foundation
 /// cases are named, with the reason.
 public enum StreamSupport: Equatable, Sendable {
 
-    /// AVPlayer handles this container.
+    /// AVPlayer handles this container natively — better controls, AirPlay,
+    /// and picture-in-picture come with it.
     case supported
+    /// AVPlayer cannot open it, but the bundled VLC engine can. Which engine
+    /// runs is an implementation detail; the point is that it PLAYS.
+    case needsVLC
     /// No extension to judge by. Most HLS endpoints look like this, so it is
     /// worth trying — but the UI should not promise it will work.
     case worthTrying
@@ -19,9 +23,15 @@ public enum StreamSupport: Equatable, Sendable {
 
     public var canAttempt: Bool {
         switch self {
-        case .supported, .worthTrying: return true
+        case .supported, .needsVLC, .worthTrying: return true
         case .unsupported: return false
         }
+    }
+
+    /// Which engine to hand this to.
+    public var usesVLC: Bool {
+        if case .needsVLC = self { return true }
+        return false
     }
 
     public static func assess(_ url: URL) -> StreamSupport {
@@ -31,9 +41,12 @@ public enum StreamSupport: Equatable, Sendable {
 
         switch scheme {
         case "udp", "rtp":
-            return .unsupported(reason: "Multicast streams only work on the provider's own network, not over the internet.")
-        case "rtsp", "rtmp":
-            return .unsupported(reason: "RTSP and RTMP are not supported by the built-in player.")
+            // VLC can decode these, but multicast does not cross the internet —
+            // so this is a NETWORK limit, not a codec one, and saying "not
+            // supported" would send the user looking for the wrong fix.
+            return .unsupported(reason: "Multicast only works on the provider's own network — it cannot reach you over the internet.")
+        case "rtsp", "rtmp", "mms":
+            return .needsVLC
         case "http", "https":
             break
         default:
@@ -48,8 +61,9 @@ public enum StreamSupport: Equatable, Sendable {
             return .supported
         case "mp4", "m4v", "mov", "m4a", "mp3", "aac":
             return .supported
-        case "ts", "mpegts", "mts", "mkv", "avi", "flv", "wmv":
-            return .unsupported(reason: "This channel streams \(ext.uppercased()), which the built-in player cannot open.")
+        case "ts", "mpegts", "mts", "mkv", "avi", "flv", "wmv", "mpg", "mpeg", "ogv", "webm":
+            // VLC's whole reason for being here.
+            return .needsVLC
         case "":
             // Very common for HLS: /live/1234 with no extension.
             return .worthTrying

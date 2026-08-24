@@ -235,19 +235,29 @@ struct ChannelListView: View {
 
 struct LiveVideoView: View {
     let channel: M3UPlaylist.Channel
+    @EnvironmentObject private var settings: Settings
+    @ObservedObject private var network = NetworkStatus.shared
     @Environment(\.dismiss) private var dismiss
+
     @State private var player: AVPlayer?
     @State private var failure: String?
+    @State private var overrideCellular = false
+
+    private var support: StreamSupport { StreamSupport.assess(channel.url) }
+
+    private var blockedByCellular: Bool {
+        !overrideCellular &&
+        NetworkStatus.shouldBlockVideo(connection: network.connection,
+                                       allowCellular: settings.value.allowCellularStreaming)
+    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
 
-            if let player {
-                VideoPlayer(player: player).ignoresSafeArea()
-            }
-
-            if let failure {
+            if blockedByCellular {
+                cellularNotice
+            } else if let failure {
                 // A black screen with a spinner tells the user nothing.
                 VStack(spacing: 10) {
                     Image(systemName: "exclamationmark.triangle").font(.title)
@@ -256,6 +266,11 @@ struct LiveVideoView: View {
                 }
                 .foregroundStyle(.white)
                 .padding(32)
+            } else if support.usesVLC {
+                VLCVideoSurface(url: channel.url) { failure = $0 }
+                    .ignoresSafeArea()
+            } else if let player {
+                VideoPlayer(player: player).ignoresSafeArea()
             }
 
             Button { dismiss() } label: {
@@ -266,10 +281,34 @@ struct LiveVideoView: View {
             .padding()
         }
         .task { start() }
+        .onChange(of: blockedByCellular) { _, blocked in
+            if blocked { player?.pause(); player = nil } else { start() }
+        }
         .onDisappear { player?.pause(); player = nil }
     }
 
+    /// The setting enforces something, and says exactly what — including how
+    /// to proceed anyway, because a hard block on a live event is its own kind
+    /// of bad.
+    private var cellularNotice: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "antenna.radiowaves.left.and.right").font(.largeTitle)
+            Text("On mobile data").font(.headline)
+            Text("Streaming video is set to WiFi only. Live TV can use several gigabytes an hour.")
+                .font(.footnote).multilineTextAlignment(.center)
+            Button("Watch anyway, just this once") { overrideCellular = true }
+                .buttonStyle(.borderedProminent)
+            Text("Change this permanently in Settings → Network.")
+                .font(.caption2).foregroundStyle(.white.opacity(0.6))
+        }
+        .foregroundStyle(.white)
+        .padding(32)
+    }
+
     private func start() {
+        guard !blockedByCellular, !support.usesVLC else { return }
+        failure = nil
+
         let item = AVPlayerItem(url: channel.url)
         let avPlayer = AVPlayer(playerItem: item)
         player = avPlayer
