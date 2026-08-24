@@ -33,10 +33,19 @@ public struct SecretStore: Sendable {
         case empty
     }
 
-    private let service: String
+    private let backend: SecretBackend
 
     public init(service: String = "nl.pietjepuh.toolbelt.secrets") {
-        self.service = service
+        self.backend = KeychainBackend(service: service)
+    }
+
+    /// Injectable backend. The Keychain itself is Apple's code and cannot be
+    /// exercised by an UNSIGNED test host — it returns `errSecMissingEntitlement`
+    /// — so the rules that are ours (named slots, trimming, refusing a blank
+    /// secret, replace-not-duplicate) are tested against an in-memory backend
+    /// instead of not being tested at all.
+    public init(backend: SecretBackend) {
+        self.backend = backend
     }
 
     public func set(_ value: String, for secret: Secret) throws {
@@ -44,45 +53,26 @@ public struct SecretStore: Sendable {
         guard !trimmed.isEmpty else { throw StoreError.empty }
         guard let data = trimmed.data(using: .utf8) else { throw StoreError.empty }
 
-        // Delete-then-add rather than update: fewer states, and it cannot leave
-        // a stale attribute set behind from an earlier accessibility choice.
-        SecItemDelete(query(for: secret) as CFDictionary)
-
-        var attrs = query(for: secret)
-        attrs[kSecValueData as String] = data
-        attrs[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-
-        let status = SecItemAdd(attrs as CFDictionary, nil)
-        guard status == errSecSuccess else { throw StoreError.keychain(status) }
+        try backend.write(data, account: secret.rawValue)
     }
 
     /// Read a secret. Callers should pass it straight to the service that needs
     /// it — this is the only way a value leaves the Keychain, and there is no
     /// logging or description path that touches it.
     public func value(for secret: Secret) -> String? {
-        var q = query(for: secret)
-        q[kSecReturnData as String] = true
-        q[kSecMatchLimit as String] = kSecMatchLimitOne
-
-        var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,
-              let data = out as? Data,
-              let s = String(data: data, encoding: .utf8) else { return nil }
-        return s
+        guard let data = backend.read(account: secret.rawValue) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     /// What the settings screen asks. Never reveals the value — not even a
     /// masked prefix, which is enough to confirm a guess.
     public func isSet(_ secret: Secret) -> Bool {
-        var q = query(for: secret)
-        q[kSecMatchLimit as String] = kSecMatchLimitOne
-        return SecItemCopyMatching(q as CFDictionary, nil) == errSecSuccess
+        backend.exists(account: secret.rawValue)
     }
 
     @discardableResult
     public func remove(_ secret: Secret) -> Bool {
-        let status = SecItemDelete(query(for: secret) as CFDictionary)
-        return status == errSecSuccess || status == errSecItemNotFound
+        backend.delete(account: secret.rawValue)
     }
 
     /// Wipe every secret. Offered in settings for handing the device on.
@@ -90,11 +80,60 @@ public struct SecretStore: Sendable {
         for secret in Secret.allCases { remove(secret) }
     }
 
-    private func query(for secret: Secret) -> [String: Any] {
+}
+
+/// Where bytes actually go. One implementation in the app, one in tests.
+public protocol SecretBackend: Sendable {
+    func write(_ data: Data, account: String) throws
+    func read(account: String) -> Data?
+    func exists(account: String) -> Bool
+    @discardableResult func delete(account: String) -> Bool
+}
+
+/// The real one: device Keychain, this device only, never synced.
+public struct KeychainBackend: SecretBackend {
+    private let service: String
+    public init(service: String) { self.service = service }
+
+    public func write(_ data: Data, account: String) throws {
+        // Delete-then-add rather than update: fewer states, and it cannot leave
+        // a stale attribute set behind from an earlier accessibility choice.
+        SecItemDelete(query(account) as CFDictionary)
+
+        var attrs = query(account)
+        attrs[kSecValueData as String] = data
+        attrs[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+
+        let status = SecItemAdd(attrs as CFDictionary, nil)
+        guard status == errSecSuccess else { throw SecretStore.StoreError.keychain(status) }
+    }
+
+    public func read(account: String) -> Data? {
+        var q = query(account)
+        q[kSecReturnData as String] = true
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess else { return nil }
+        return out as? Data
+    }
+
+    public func exists(account: String) -> Bool {
+        var q = query(account)
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
+        return SecItemCopyMatching(q as CFDictionary, nil) == errSecSuccess
+    }
+
+    @discardableResult
+    public func delete(account: String) -> Bool {
+        let status = SecItemDelete(query(account) as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
+    private func query(_ account: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: secret.rawValue,
+            kSecAttrAccount as String: account,
             // Explicit: this item is not part of the iCloud Keychain.
             kSecAttrSynchronizable as String: false
         ]

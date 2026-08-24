@@ -138,16 +138,42 @@ final class SubscriptionStoreTests: XCTestCase {
     }
 }
 
+/// In-memory stand-in for the Keychain. The real Keychain returns
+/// `errSecMissingEntitlement` (-34018) to an UNSIGNED test host, and this
+/// project builds unsigned on purpose, so exercising Apple's storage here is
+/// not possible. What IS ours — named slots, trimming, refusing a blank
+/// secret, replace-not-duplicate — is tested properly against this.
+private final class MemorySecretBackend: SecretBackend, @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String: Data] = [:]
+    private(set) var writeCount = 0
+
+    func write(_ data: Data, account: String) throws {
+        lock.lock(); defer { lock.unlock() }
+        items[account] = data
+        writeCount += 1
+    }
+    func read(account: String) -> Data? {
+        lock.lock(); defer { lock.unlock() }
+        return items[account]
+    }
+    func exists(account: String) -> Bool { read(account: account) != nil }
+    @discardableResult func delete(account: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        items[account] = nil
+        return true
+    }
+    var accounts: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return Array(items.keys)
+    }
+}
+
 final class SecretStoreTests: XCTestCase {
 
-    // A per-test service keeps these from colliding with a real install.
-    private func makeStore(_ name: String = #function) -> SecretStore {
-        SecretStore(service: "nl.pietjepuh.toolbelt.tests.\(name)")
-    }
-
     func testRoundTrip() throws {
-        let store = makeStore()
-        defer { store.removeAll() }
+        let backend = MemorySecretBackend()
+        let store = SecretStore(backend: backend)
 
         XCTAssertFalse(store.isSet(.tmdbKey))
         try store.set("a-real-key", for: .tmdbKey)
@@ -156,17 +182,18 @@ final class SecretStoreTests: XCTestCase {
     }
 
     func testOverwriteReplacesRatherThanDuplicates() throws {
-        let store = makeStore()
-        defer { store.removeAll() }
+        let backend = MemorySecretBackend()
+        let store = SecretStore(backend: backend)
 
         try store.set("first", for: .tmdbKey)
         try store.set("second", for: .tmdbKey)
         XCTAssertEqual(store.value(for: .tmdbKey), "second")
+        XCTAssertEqual(backend.accounts.count, 1, "must not accumulate a second item")
     }
 
-    func testBlankSecretIsRefused() {
-        let store = makeStore()
-        defer { store.removeAll() }
+    func testBlankSecretIsRefusedAndNeverWritten() {
+        let backend = MemorySecretBackend()
+        let store = SecretStore(backend: backend)
 
         // A blank key would show as "configured" and fail every request.
         for blank in ["", "   ", "\n\t"] {
@@ -175,12 +202,11 @@ final class SecretStoreTests: XCTestCase {
             }
         }
         XCTAssertFalse(store.isSet(.tmdbKey))
+        XCTAssertEqual(backend.writeCount, 0, "a refused secret must not reach storage")
     }
 
     func testStoredValueIsTrimmed() throws {
-        let store = makeStore()
-        defer { store.removeAll() }
-
+        let store = SecretStore(backend: MemorySecretBackend())
         // Pasting from a website drags whitespace along; a trailing newline in
         // an Authorization header is rejected by the server, not by us.
         try store.set("  key-with-spaces \n", for: .tmdbKey)
@@ -188,11 +214,53 @@ final class SecretStoreTests: XCTestCase {
     }
 
     func testRemove() throws {
-        let store = makeStore()
+        let store = SecretStore(backend: MemorySecretBackend())
         try store.set("x", for: .tmdbKey)
         XCTAssertTrue(store.remove(.tmdbKey))
         XCTAssertFalse(store.isSet(.tmdbKey))
         XCTAssertNil(store.value(for: .tmdbKey))
         XCTAssertTrue(store.remove(.tmdbKey), "removing an absent secret is not an error")
+    }
+
+    func testRemoveAllClearsEverySlot() throws {
+        let backend = MemorySecretBackend()
+        let store = SecretStore(backend: backend)
+        for slot in SecretStore.Secret.allCases { try store.set("v", for: slot) }
+        store.removeAll()
+        XCTAssertTrue(backend.accounts.isEmpty)
+        XCTAssertTrue(SecretStore.Secret.allCases.allSatisfy { !store.isSet($0) })
+    }
+
+    func testSlotsUseDistinctAccounts() throws {
+        // A shared account name would make one secret silently overwrite
+        // another; this catches it the moment a second slot is added.
+        let names = SecretStore.Secret.allCases.map(\.rawValue)
+        XCTAssertEqual(Set(names).count, names.count)
+    }
+}
+
+final class SSHIdentityLifecycleTests: XCTestCase {
+
+    func testHasIdentityDoesNotCreateOne() throws {
+        // Settings shows the fingerprint, and `fingerprint()` creates a key on
+        // first use — so merely opening Settings would mint an identity the
+        // user never asked for. `hasIdentity` must be a pure question.
+        let store = SSHKeyStore(service: "nl.pietjepuh.toolbelt.tests.lifecycle",
+                                account: "probe")
+        try? store.destroy()
+        XCTAssertFalse(store.hasIdentity)
+
+        do {
+            _ = try store.identity()
+        } catch SSHKeyStore.StoreError.keychain(let status) where status == -34018 {
+            // errSecMissingEntitlement: unsigned test host, no Keychain. Skip
+            // rather than pass — a test that could not run must not report as
+            // one that did.
+            throw XCTSkip("Keychain unavailable to an unsigned test host (-34018)")
+        }
+
+        XCTAssertTrue(store.hasIdentity)
+        try store.destroy()
+        XCTAssertFalse(store.hasIdentity)
     }
 }

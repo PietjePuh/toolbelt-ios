@@ -38,6 +38,13 @@ public struct SSHKeyStore: Sendable {
         return key
     }
 
+    /// Whether an identity already exists, WITHOUT creating one. Settings needs
+    /// this: reading the fingerprint goes through `identity()`, so merely
+    /// opening the screen would generate a key the user never asked for.
+    public var hasIdentity: Bool {
+        (try? load()) != nil
+    }
+
     /// `ssh-ed25519 AAAA... toolbelt-ios` — paste into `authorized_keys`.
     public func authorizedKeyLine(comment: String = "toolbelt-ios") throws -> String {
         let pub = try identity().publicKey.rawRepresentation

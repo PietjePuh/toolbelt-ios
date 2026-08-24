@@ -22,8 +22,14 @@ struct RootView: View {
             DomainScanView(scanner: DomainScanner(gateway: gateway))
                 .tabItem { Label("Scan", systemImage: "magnifyingglass") }
 
+            WatchView(gateway: gateway)
+                .tabItem { Label("Watch", systemImage: "film") }
+
             BrowserView(url: URL(string: "https://duckduckgo.com/")!)
                 .tabItem { Label("Browse", systemImage: "safari") }
+
+            SettingsView()
+                .tabItem { Label("Settings", systemImage: "gearshape") }
 
             // Feeds, watchlist and finance land here as each one works end to
             // end. Deliberately not stubbed with placeholder tabs: an empty tab
