@@ -118,11 +118,21 @@ final class StreamSupportTests: XCTestCase {
         XCTAssertTrue(reason.lowercased().contains("network"))
     }
 
-    func testRawTransportStreamIsUnsupported() {
-        guard case .unsupported(let reason) = StreamSupport.assess(URL(string: "https://p.example/live/1.ts")!) else {
-            return XCTFail("expected unsupported")
+    func testContainersAVPlayerCannotOpenGoToVLC() {
+        // The reason VLCKit is a dependency at all.
+        for raw in ["https://p.example/live/1.ts", "https://p.example/f.mkv",
+                    "https://p.example/f.avi", "rtsp://p.example/stream"] {
+            let support = StreamSupport.assess(URL(string: raw)!)
+            XCTAssertTrue(support.usesVLC, "\(raw) should route to VLC")
+            XCTAssertTrue(support.canAttempt, "\(raw) is playable, just not by AVPlayer")
         }
-        XCTAssertTrue(reason.contains("TS"))
+    }
+
+    func testNativeContainersDoNotGoToVLC() {
+        // HLS through AVPlayer keeps AirPlay, PiP and the system controls.
+        for raw in ["https://p.example/live.m3u8", "https://p.example/f.mp4"] {
+            XCTAssertFalse(StreamSupport.assess(URL(string: raw)!).usesVLC, raw)
+        }
     }
 
     func testExtensionlessURLIsWorthTryingNotRejected() {
@@ -139,7 +149,41 @@ final class StreamSupportTests: XCTestCase {
             .supported)
     }
 
-    func testRTSPIsUnsupported() {
-        XCTAssertFalse(StreamSupport.assess(URL(string: "rtsp://p.example/s")!).canAttempt)
+}
+
+final class CellularGuardTests: XCTestCase {
+
+    func testWiFiOnlyBlocksCellularAndNothingElse() {
+        // A setting that enforces nothing is cosmetic UI, which this project
+        // has already spent a change removing.
+        XCTAssertTrue(NetworkStatus.shouldBlockVideo(connection: .cellular, allowCellular: false))
+        XCTAssertFalse(NetworkStatus.shouldBlockVideo(connection: .wifi, allowCellular: false))
+        XCTAssertFalse(NetworkStatus.shouldBlockVideo(connection: .wired, allowCellular: false))
+    }
+
+    func testAllowingCellularUnblocksIt() {
+        XCTAssertFalse(NetworkStatus.shouldBlockVideo(connection: .cellular, allowCellular: true))
+    }
+
+    func testOfflineIsNotTreatedAsMetered() {
+        // Being offline is a different failure, and must not be reported as
+        // "you are on mobile data".
+        XCTAssertFalse(NetworkStatus.shouldBlockVideo(connection: .none, allowCellular: false))
+    }
+}
+
+final class VLCEngineAvailabilityTests: XCTestCase {
+
+    func testVLCEngineIsActuallyCompiledIn() {
+        // Without this, the build is green in a way that means nothing: the
+        // surface sits behind `#if canImport(VLCKit)`, so if the dependency
+        // ever failed to resolve, the compiler would quietly take the fallback
+        // branch and NONE of the VLC code would be compiled — while CI still
+        // reported success. This turns that silent downgrade into a failure.
+        //
+        // If this ever goes red, MKV/TS/RTSP channels stopped playing; the
+        // fix is the VLCKit pin in project.yml, not this test.
+        XCTAssertTrue(vlcEngineAvailable,
+                      "VLCKit did not resolve — MKV/TS/RTSP channels will not play")
     }
 }
