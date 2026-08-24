@@ -17,12 +17,22 @@ name: Build (unsigned IPA)
 on:
   workflow_dispatch:
   push:
+    # main included deliberately. Nothing here can be compiled in the authoring
+    # environment (Linux, no Xcode), so CI *is* the compiler — a commit that
+    # only runs on tag or PR is a commit nobody ever compiled. A compile error
+    # sat on main undetected because of exactly this.
+    branches:
+      - main
     tags:
       - 'v*'
   pull_request:
     paths:
+      # Tests/** and project.yml are here on purpose: a test-only change can
+      # break the build, and project.yml IS the build definition.
       - 'App/**'
-      - '*.xcodeproj/**'
+      - 'Tests/**'
+      - 'project.yml'
+      - '.github/workflows/**'
       - '.github/workflows/build.yml'
 
 concurrency:
