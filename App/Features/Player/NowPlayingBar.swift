@@ -4,6 +4,7 @@ import SwiftUI
 /// never an empty control taking up space.
 struct NowPlayingBar: View {
     @ObservedObject var player: AudioPlayer
+    @EnvironmentObject private var settings: Settings
     @State private var expanded = false
 
     var body: some View {
@@ -37,9 +38,12 @@ struct NowPlayingBar: View {
                     // Skip controls are absent on live audio, not disabled: a
                     // button that cannot do anything is worse than no button.
                     if !item.isLive {
-                        Button { player.skip(by: -15) } label: {
-                            Image(systemName: "gobackward.15")
+                        Button {
+                            player.skip(by: -Double(settings.value.skipBackwardSeconds))
+                        } label: {
+                            Image(systemName: "gobackward")
                         }
+                        .accessibilityLabel("Skip back \(settings.value.skipBackwardSeconds) seconds")
                     }
                     Button { player.toggle() } label: {
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")

@@ -6,10 +6,21 @@ struct ToolbeltApp: App {
     /// timeouts and failure descriptions are owned. Mirrors the desktop
     /// Toolbelt's shape, minus the server.
     private let gateway = Gateway()
+    @StateObject private var settings = Settings()
 
     var body: some Scene {
         WindowGroup {
             RootView(gateway: gateway)
+                .environmentObject(settings)
+                .preferredColorScheme(colorScheme)
+        }
+    }
+
+    private var colorScheme: ColorScheme? {
+        switch settings.value.appearance {
+        case .system: return nil
+        case .light:  return .light
+        case .dark:   return .dark
         }
     }
 }
@@ -36,6 +47,9 @@ struct RootView: View {
 
             WatchView(gateway: gateway)
                 .tabItem { Label("Watch", systemImage: "film") }
+
+            LiveTVView(gateway: gateway)
+                .tabItem { Label("Live TV", systemImage: "tv") }
 
             BrowserView(url: URL(string: "https://duckduckgo.com/")!)
                 .tabItem { Label("Browse", systemImage: "safari") }
