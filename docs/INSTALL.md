@@ -33,6 +33,11 @@ SideStore refreshes over Wi-Fi with no computer involved after the first setup.
    installs the SideStore app itself.
 2. **Download the build.** Grab `Toolbelt-unsigned.ipa` from the
    [Releases page](../../releases) of this repo.
+
+   > If Releases is empty, no tagged build exists yet. Use Route C (build it
+   > yourself) for now — the release is cut from a `v*` tag, so there is
+   > deliberately nothing there until one is tagged, rather than a stale
+   > artifact pretending to be current.
 3. **Open SideStore → `+` → pick the `.ipa`.** Sign in with your Apple ID when
    asked. That Apple ID is sent to *Apple*, not to anyone else — SideStore signs
    the app locally on your device.

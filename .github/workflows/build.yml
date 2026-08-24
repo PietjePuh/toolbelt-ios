@@ -16,6 +16,9 @@ name: Build (unsigned IPA)
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
   pull_request:
     paths:
       - 'App/**'
@@ -93,6 +96,21 @@ jobs:
           cp -R build/Toolbelt.xcarchive/Products/Applications/*.app build/Payload/
           (cd build && zip -qry Toolbelt-unsigned.ipa Payload)
           ls -lh build/Toolbelt-unsigned.ipa
+
+      - name: Publish a Release on tag
+        # Workflow ARTIFACTS require a GitHub login to download and expire after
+        # a retention window — so docs/INSTALL.md pointing at "Releases" would
+        # be a broken promise for the people this app is published for. A
+        # release asset is anonymous and permanent.
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            build/Toolbelt-unsigned.ipa \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "Unsigned build. Install with SideStore or AltStore — see docs/INSTALL.md. Signed on YOUR device with YOUR Apple ID; nothing here is signed by the author."
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
