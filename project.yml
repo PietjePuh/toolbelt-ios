@@ -36,10 +36,18 @@ packages:
   # pin is also the more defensible choice: it is reproducible, and it cannot
   # move under us the way a range can.
   #
-  # e8ed62f = tag 4.0.0a21. Bump deliberately, and re-run CI when you do.
+  # e3774eb (2026-08-05) is where Package.swift was ADDED. The 4.0.0a21 tag
+  # predates SPM support entirely — pinning there fails with "the package
+  # manifest at '/Package.swift' cannot be accessed".
+  #
+  # Known risk, stated rather than discovered later: SPM support here is new and
+  # exists on master only, in no tag. So this pin is a master commit, not a
+  # release. It is still a fixed revision — it cannot move under us — but it is
+  # a younger dependency than one would normally accept. Revisit once VLCKit
+  # ships a tag containing Package.swift.
   VLCKit:
     url: https://github.com/videolan/vlckit
-    revision: e8ed62f40c87dd5c5ed73812da8fa6a7bc1e58aa
+    revision: e3774eb25c62c902e9066ba267e6416d82e83382
 
 targets:
   Toolbelt:
