@@ -29,6 +29,14 @@ concurrency:
   group: build-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
+# GITHUB_TOKEN defaults to READ-ONLY on this repo, so creating a release fails
+# with "HTTP 403: Resource not accessible by integration" — which reads like a
+# credentials problem and is actually a permissions declaration. Scoped to the
+# job, and to contents only: this workflow never needs to write issues, PRs or
+# packages.
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build unsigned .ipa
