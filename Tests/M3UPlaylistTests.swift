@@ -105,4 +105,19 @@ final class M3UPlaylistTests: XCTestCase {
         let p = try M3UPlaylist.parse(Data(bytes))
         XCTAssertEqual(p.channels.count, 1)
     }
+
+    func testLeadingDurationIsNotTreatedAsAnAttributeName() {
+        // The regression: `-1` was glued onto the first key, giving `-1 tvg-id`,
+        // so every lookup missed and every channel silently lost its metadata.
+        let attrs = M3UPlaylist.parseAttributes("-1 tvg-id=\"bbc1\" group-title=\"News\"")
+        XCTAssertEqual(attrs["tvg-id"], "bbc1")
+        XCTAssertEqual(attrs["group-title"], "News")
+        XCTAssertNil(attrs["-1 tvg-id"])
+    }
+
+    func testUnquotedAttributeValues() {
+        let attrs = M3UPlaylist.parseAttributes("-1 tvg-id=bbc1 tvg-shift=2")
+        XCTAssertEqual(attrs["tvg-id"], "bbc1")
+        XCTAssertEqual(attrs["tvg-shift"], "2")
+    }
 }

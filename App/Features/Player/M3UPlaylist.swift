@@ -126,30 +126,47 @@ public struct M3UPlaylist: Equatable, Sendable {
         return (name, parseAttributes(head))
     }
 
-    /// `key="value"` pairs. Values are returned verbatim — they are data.
+    /// `key="value"` pairs, and the unquoted `key=value` form some providers
+    /// emit. Values are returned verbatim — they are data.
+    ///
+    /// Written as an explicit state machine because the input starts with the
+    /// duration (`-1 tvg-id="x"`), which is not an attribute at all: the first
+    /// version glued it onto the first key, producing `-1 tvg-id` and making
+    /// EVERY attribute lookup return nil.
     static func parseAttributes(_ s: String) -> [String: String] {
+        enum State { case key, afterEquals, quoted, bare }
+
         var out: [String: String] = [:]
         var key = ""
         var value = ""
-        var inKey = false
-        var inValue = false
+        var state = State.key
+
+        func commit() {
+            let k = key.trimmingCharacters(in: .whitespaces).lowercased()
+            if !k.isEmpty { out[k] = value }
+            key = ""; value = ""; state = .key
+        }
 
         for ch in s {
-            if inValue {
-                if ch == "\"" {
-                    out[key.trimmingCharacters(in: .whitespaces).lowercased()] = value
-                    key = ""; value = ""; inValue = false
-                } else {
-                    value.append(ch)
-                }
-                continue
+            switch state {
+            case .key:
+                if ch == "=" { state = .afterEquals }
+                // Whitespace ends a partial key: whatever was accumulating was
+                // not followed by `=`, so it was never an attribute name.
+                else if ch == " " || ch == "\t" { key = "" }
+                else { key.append(ch) }
+            case .afterEquals:
+                if ch == "\"" { state = .quoted }
+                else if ch == " " || ch == "\t" { }   // tolerate `k = "v"`
+                else { value.append(ch); state = .bare }
+            case .quoted:
+                // A comma in here is part of the value, not the name separator.
+                if ch == "\"" { commit() } else { value.append(ch) }
+            case .bare:
+                if ch == " " || ch == "\t" { commit() } else { value.append(ch) }
             }
-            if ch == "=" { inKey = false; continue }
-            if ch == "\"" { inValue = true; continue }
-            if ch == " " && !inKey { key = ""; inKey = true; continue }
-            key.append(ch)
-            inKey = true
         }
+        if state == .bare { commit() }
         return out
     }
 }
