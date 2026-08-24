@@ -33,7 +33,7 @@ public struct BrowserView: View {
     private var addressBar: some View {
         HStack(spacing: 8) {
             Image(systemName: model.isSecure ? "lock.fill" : "exclamationmark.triangle.fill")
-                .foregroundStyle(model.isSecure ? .secondary : .orange)
+                .foregroundStyle(model.isSecure ? Color.secondary : Color.orange)
                 .accessibilityLabel(model.isSecure ? "Encrypted connection" : "Not encrypted")
 
             Text(model.host)
