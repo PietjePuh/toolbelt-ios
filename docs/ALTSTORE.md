@@ -18,13 +18,13 @@ require authentication**, and AltStore sends no credentials. The usual answer is
 There is a better answer here, because the phone is already on the tailnet:
 
 ```
-iPhone (AltStore)  ──Tailscale──▶  pluto-kali  ──▶  Caddy  ──▶  /altstore/source.json
+iPhone (AltStore)  ──Tailscale──▶  your-host  ──▶  Caddy  ──▶  /altstore/source.json
                                                                 /altstore/Toolbelt.ipa
 ```
 
 Verified on this setup:
-- `pluto-kali` — 100.112.72.3 (this host, serving)
-- `iphone173` — 100.90.114.93 (the phone, already enrolled)
+- `your-host` — 100.x.y.z (this host, serving)
+- `your-phone` — 100.x.y.z (the phone, already enrolled)
 - Caddy already runs as `toolbelt-caddy`
 
 So the repo stays **private**, nothing is exposed to the internet, and the
@@ -37,7 +37,7 @@ Security blocks plain `http://` — the schema test enforces `https://`.
 `tailscale serve` is the least-moving-parts option:
 
 ```bash
-# on pluto-kali
+# on your-host
 sudo tailscale serve --bg --set-path /altstore /var/www/altstore
 ```
 
@@ -51,7 +51,7 @@ front door. Either way the files live in one directory:
   icon.png             # referenced by iconURL
 ```
 
-Then in AltStore: **Browse → Sources → + → `https://<pluto-kali-magicdns>/altstore/source.json`**
+Then in AltStore: **Browse → Sources → + → `https://<your-host-magicdns>/altstore/source.json`**
 
 ## The 7-day reality
 
@@ -79,7 +79,7 @@ if the refresh cycle grates — noted here so it is not rediscovered later.
 ```bash
 # on the macOS runner, after the build produces build/Toolbelt-unsigned.ipa
 node scripts/add-release.mjs build/Toolbelt-unsigned.ipa \
-  https://<pluto-kali-magicdns>/altstore/Toolbelt.ipa
+  https://<your-host-magicdns>/altstore/Toolbelt.ipa
 
 node --test tests/source-schema.test.mjs     # validate before publishing
 ```

@@ -25,8 +25,8 @@ AltStore must fetch the source JSON and the `.ipa` from the phone, and
 **private-repo release assets require auth**, which AltStore does not send. The
 usual workaround is making the repo public.
 
-Not needed here: the phone (`iphone173`, 100.90.114.93) is already on the
-tailnet with this host (`pluto-kali`, 100.112.72.3), and Caddy is already
+Not needed here: the phone (`your-phone`, 100.x.y.z) is already on the
+tailnet with this host (`your-host`, 100.x.y.z), and Caddy is already
 running. Serve both files there. Repo stays private, nothing faces the
 internet, and Tailscale issues the real certificate iOS ATS requires.
 
@@ -85,7 +85,7 @@ Tailscale was off. The owner's objection: most Toolbelt tools need the internet
 anyway, so an app that only works on the tailnet has the dependency backwards.
 
 The confusion was mine: the tools that need internet need the GATEWAY's
-internet, not the phone's. `pluto-kali` already has connectivity and does that
+internet, not the phone's. `your-host` already has connectivity and does that
 work on the owner's behalf. But it is still true that an app which does nothing
 without a VPN is the wrong product.
 

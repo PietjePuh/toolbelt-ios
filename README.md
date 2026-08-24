@@ -13,8 +13,14 @@ Optionally, point it at a self-hosted gateway on a Linux box if you want the
 full [Developer Toolbelt](https://github.com/PietjePuh/Toolbelt) setup behind
 it.
 
-Status: **scaffold** — design settled, app not yet written. See
-`docs/DECISIONS.md` for what was decided and why.
+Status: **early**. The gateway and domain scanner are written; finance, RSS,
+security feeds and the terminal are not yet. See `docs/DECISIONS.md` for what
+was decided and why.
+
+## Install
+
+**[→ Installation instructions](docs/INSTALL.md)** — free Apple ID, no paid
+developer account, ~10 minutes. Or build it yourself from source.
 
 ## What it does
 
