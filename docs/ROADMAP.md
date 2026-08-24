@@ -71,14 +71,42 @@ swift-nio-ssh for transport, a terminal view for rendering. The security layer
 (identity, host keys) exists and is tested, so this sits on something correct
 rather than having security retrofitted.
 
-### 7. Torrent engine  ← largest and riskiest, deliberately last
-No mature pure-Swift BitTorrent stack exists, so this means libtorrent (C++)
-and by far the biggest dependency in the project.
+### 6b. Live TV from IPTV (M3U)  ← cheap, and it lands before the hard stuff
+Parse an M3U/M3U8 playlist, list the channels, hand the stream URL to VLCKit —
+which already speaks HLS, MPEG-TS and UDP natively, so there is nothing to
+build on the playback side.
 
-**Say plainly in the UI: downloads only progress while the app is open.** iOS
-suspends apps shortly after backgrounding and throttles persistent connections.
-That is the platform. A progress bar that silently stalls when backgrounded is
-worse than a stated limitation.
+Untrusted input from a user-supplied URL, so the parser gets the same treatment
+as the magnet parser: size cap, no blind trust of `tvg-logo`/`group-title`, and
+a malformed playlist reports as malformed rather than rendering an empty list
+that reads as "no channels".
+
+### 7. Torrent STREAMING, not downloading  ← changed by the owner, and it is better
+Originally scoped as a download manager. The owner's call: **stream into the
+player like Stremio** — sequential pieces, served to VLC, watch while it
+fetches.
+
+This is a genuinely better fit for iOS, and it largely dissolves the problem
+that made downloading awkward: **you are watching, so the app is in the
+foreground by definition.** The background-suspension limit that would have
+stalled an overnight download barely applies to a session you are actively
+looking at.
+
+Shape:
+
+    magnet ──▶ engine (sequential piece priority) ──▶ local HTTP on 127.0.0.1
+                                                              │
+                                                              ▼
+                                                     VLCKit plays that URL
+
+Still the largest slice — there is no mature pure-Swift BitTorrent stack, so it
+means libtorrent (C++). Deliberately last, and now with a smaller surface: no
+download queue, no resume state, no storage management. A stream that plays and
+is discarded is far less code than a download manager.
+
+Still say plainly in the UI that pausing and backgrounding for a long time will
+stall the stream. Stating a limitation beats a progress bar that silently
+stops.
 
 ---
 
