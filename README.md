@@ -1,10 +1,51 @@
 # toolbelt-ios
 
-Sideloaded iOS companion for the [Developer Toolbelt](https://github.com/PietjePuh/Toolbelt).
-Reaches the home-lab over Tailscale — no ports opened to the internet.
+A security + finance app that runs entirely on **your** device, with **your**
+keys, over **your** connection.
 
-Status: **scaffold**. Nothing is built or signed yet. Read "Before you can build"
-first; the constraints there decide the shape of everything else.
+Most apps in this space wrap a single provider — one exchange, one scanner, one
+feed. This one puts many behind a single gateway, and **that gateway ships
+inside the app**. There is no server to sign up for and no account to create,
+because there is no service: nothing you do here reaches anyone else's
+infrastructure.
+
+Optionally, point it at a self-hosted gateway on a Linux box if you want the
+full [Developer Toolbelt](https://github.com/PietjePuh/Toolbelt) setup behind
+it.
+
+Status: **scaffold** — design settled, app not yet written. See
+`docs/DECISIONS.md` for what was decided and why.
+
+## What it does
+
+- **Finance** — watchlist and portfolio glance from public market data.
+  Read-only, always: no trading, no order placement, no account linking.
+- **RSS** — your feeds.
+- **Domain scanner** — DNS, subdomains, certificate transparency, security
+  headers. Runs from your device, over your connection.
+- **In-app browser** — open what you find without leaving the app.
+- **Security feeds** — CVE / KEV / threat intel.
+
+### Not here, by design
+- **No trading controls.** Ever. Market data is displayed, never acted on.
+- **No AI chat in v1** — it would mean storing provider keys on the phone.
+- **No telemetry, no analytics, no account.** There is nowhere for data to go.
+
+## Why your keys stay yours
+
+Every request originates from your device. API keys live in the iOS Keychain
+and are never transmitted anywhere except to the provider they belong to. The
+author operates no infrastructure and receives nothing — which is a design
+choice, not a promise you have to take on trust: read the code.
+
+### On the domain scanner
+Only scan hosts you own or are authorised to test. Scans originate from **your**
+connection and are attributable to you.
+
+### On the finance features
+Indicators are shown with their underlying numbers so you can check them. There
+are no price targets, no buy/sell recommendations, and nothing here is
+financial advice.
 
 ---
 

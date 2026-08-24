@@ -114,6 +114,63 @@ nonce replay protection. It was built anticipating exposure — so Tailscale
 Funnel remains a viable future option. Deliberately not taken now: exposing the
 gateway is the owner's call, not something to switch on while they are away.
 
+### 6. Public, but self-hosted-by-the-user — the gateway ships INSIDE the app
+Supersedes the personal-tool framing of decisions 2 and 5.
+
+Goal: anyone can use it, distributed from the GitHub repo — **not** the App
+Store. That avoids App Review and the €99/yr, and it avoids the thing that
+would otherwise sink this: running infrastructure for strangers.
+
+**The gateway is embedded in the app.** Each user's device does its own
+fetching, with their own API keys, over their own connection. Consequences,
+which are the whole point:
+
+- **No hosted backend.** No uptime obligation, no bill, no scaling.
+- **No data-processor role.** Nobody's data ever reaches the author, so the
+  GDPR surface is the user's own device, not a service.
+- **Scanner abuse is not the author's problem.** A domain scan originates from
+  the user's own connection. Still ship a consent line in-app — "only scan what
+  you own or are authorised to test" — because it is the right thing to say,
+  not because it shifts liability.
+
+**Optional second mode:** connect to a self-hosted gateway on a Linux box, for
+users who want the full 42-stack setup. That is the author's own configuration,
+generalised — not a service anyone else operates.
+
+**Why this also settles native (again, and for a better reason):** an embedded
+gateway must make arbitrary cross-origin HTTP requests. A browser cannot —
+CORS forbids it, which is precisely why the domain scanner and in-app browser
+were already forcing native. Same constraint, now load-bearing for the whole
+architecture rather than two features.
+
+### 7. Repo must go PUBLIC — OPEN, needs the owner
+Blocks distribution, and only the owner can decide it.
+
+GitHub **release assets on a private repo require authentication**, so nobody
+could download the `.ipa`. Distribution-from-the-repo therefore requires the
+repo to be public. It also makes macOS CI minutes **free**, removing the 10x
+private-repo cost that shaped the build workflow.
+
+Not reversible in the way it sounds: flipping to public is one click, but
+flipping back does **not** un-publish what was already fetched or forked.
+Before flipping, confirm no secret has ever been committed — the history goes
+public too, not just the current tree.
+
+### 8. Scope discipline — what the public version is ABOUT
+The differentiator is **aggregation**: most apps wrap one provider; this one
+puts many behind a single gateway with one auth model. That is the unglamorous
+work already done in the parent repo and it is genuinely hard to copy.
+
+Tasks, goals, calendar and habits are **commodity** — a crowded space, and
+including them turns the pitch into "everything app", which is far harder to
+land than "the one app that unifies your security and money tools". Keep them
+as personal/v2 features, out of the public story.
+
+**Finance stays educational-not-advice, and it matters more now.** With real
+users, §6 stops being a style rule and becomes what keeps this clear of
+investment-advice regulation in the EU. Transparent indicators with their
+numbers; never an invented price target; never a recommendation to buy.
+
 ---
 
 ## SETTLED
