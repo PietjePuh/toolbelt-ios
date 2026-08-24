@@ -78,8 +78,32 @@ public struct FeedLoader: Sendable {
         } catch FeedParser.ParseError.tooLarge {
             throw LoadError.tooLarge
         } catch FeedParser.ParseError.malformedXML(let why) {
+            // Real-world HTML is not well-formed XML, so a login page fails as
+            // a PARSE error rather than as "no feed element". Reporting
+            // "malformed feed (NSXMLParserErrorDomain 111)" is true and
+            // useless — the user needs to know they pasted a web page.
+            //
+            // Sniffed only after parsing has already failed, so a genuine feed
+            // served with a wrong content-type still loads.
+            if Self.looksLikeHTML(response.body, contentType: response.headers["content-type"]) {
+                throw LoadError.notAFeed
+            }
             throw LoadError.malformed(why)
         }
+    }
+
+    /// Cheap HTML sniff over the first bytes. Only consulted once parsing has
+    /// failed, so a false positive cannot hide a working feed.
+    static func looksLikeHTML(_ body: Data, contentType: String?) -> Bool {
+        if let contentType, contentType.lowercased().contains("text/html") { return true }
+
+        let head = String(decoding: body.prefix(1024), as: UTF8.self)
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        for marker in ["<!doctype html", "<html", "<head", "<body"] where head.contains(marker) {
+            return true
+        }
+        return false
     }
 
     /// Fetch a candidate URL to decide what it is before subscribing — so the

@@ -82,8 +82,13 @@ final class FeedLoaderTests: XCTestCase {
     func testHTMLServedWith200IsNotAFeedNotAnEmptyList() async {
         // The case that makes this whole type exist: sites serve login pages
         // and error pages with a 200. Reporting "no items" would be a lie.
+        //
+        // Note the unclosed tags — real HTML is NOT well-formed XML, so this
+        // fails as a parse error and has to be recognised as a page, not
+        // reported as "malformed feed" with an XML error number.
         StubProtocol.set(.response(status: 200, body: Data("""
-        <!doctype html><html><body><h1>Sign in to continue</h1></body></html>
+        <!doctype html><html><head><meta charset=utf-8><title>Sign in</title>
+        <body><h1>Sign in to continue<p>Members only<br>
         """.utf8)), for: feedURL)
 
         do {
@@ -92,6 +97,41 @@ final class FeedLoaderTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? FeedLoader.LoadError, .notAFeed)
         }
+    }
+
+    func testWellFormedXHTMLIsAlsoRecognisedAsAPage() async {
+        StubProtocol.set(.response(status: 200, body: Data(
+            "<html><body>hello</body></html>".utf8)), for: feedURL)
+        do {
+            _ = try await makeLoader().load(URL(string: feedURL)!)
+            XCTFail("expected notAFeed")
+        } catch {
+            XCTAssertEqual(error as? FeedLoader.LoadError, .notAFeed)
+        }
+    }
+
+    func testTrulyMalformedXMLStillReportsAsMalformed() async {
+        // Not HTML, genuinely broken — the user should be told the feed itself
+        // is at fault, not that they pasted a web page.
+        StubProtocol.set(.response(status: 200, body: Data(
+            "<rss version=\"2.0\"><channel><title>Oops".utf8)), for: feedURL)
+        do {
+            _ = try await makeLoader().load(URL(string: feedURL)!)
+            XCTFail("expected malformed")
+        } catch {
+            guard case .malformed? = error as? FeedLoader.LoadError else {
+                return XCTFail("expected .malformed, got \(error)")
+            }
+        }
+    }
+
+    func testSniffDoesNotOverrideASuccessfulParse() {
+        // A feed served as text/html still loads: the sniff is consulted only
+        // after parsing has already failed.
+        XCTAssertTrue(FeedLoader.looksLikeHTML(Data("<html>".utf8), contentType: nil))
+        XCTAssertTrue(FeedLoader.looksLikeHTML(Data("<rss/>".utf8), contentType: "text/html; charset=utf-8"))
+        XCTAssertFalse(FeedLoader.looksLikeHTML(Data("<rss version=\"2.0\"></rss>".utf8),
+                                                contentType: "application/rss+xml"))
     }
 
     func testHTTPStatusIsPreserved() async {
