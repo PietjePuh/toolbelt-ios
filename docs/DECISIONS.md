@@ -38,11 +38,38 @@ workflow is manual + PR-only rather than running on every push.
 
 ## OPEN — still needs the owner
 
-### 4. Native SwiftUI vs a wrapper
-Scaffolded as native SwiftUI. A Capacitor/PWA wrapper would reuse the existing
-hub UIs and could sidestep sideloading entirely (add-to-home-screen), at the
-cost of native polish and background behaviour. Worth a deliberate answer
-before much UI exists.
+### ~~4. Native SwiftUI vs a wrapper~~ — SETTLED: PWA first
+Decided with the owner. The deciding fact: **the gateway is tailnet-only, and
+the owner connects deliberately rather than staying connected.**
+
+Once the data source is unreachable much of the time, native's usual advantage
+(works offline) mostly evaporates — a native app with no tailnet shows nothing
+useful either. What remains is a straight comparison the PWA wins:
+
+|  | PWA | native + AltStore |
+|---|---|---|
+| weekly re-signing | none | every 7 days, forever |
+| 3-app cap (free Apple ID) | n/a | consumes one |
+| macOS CI at 10x minutes | none | every build |
+| shipping an update | copy to Caddy | rebuild, resign, re-download |
+| the existing 10 hub UIs | reusable | rewrite in SwiftUI |
+
+**Push alerts do not distinguish the options.** Nothing can push to the phone
+over a tailnet it is not connected to — not a PWA, not a native app. Real push
+needs an internet-reachable relay (APNs), which cuts against the
+nothing-faces-the-internet posture. So the alert inbox is check-on-open for
+now. Deliberately deferred, not overlooked.
+
+**The trigger to revisit:** if reliable background alerts become a requirement
+and a push relay is accepted, native becomes the better tool. The AltStore
+plumbing (source manifest, release script, schema tests) is already in place
+and stays valid — this is a fork in the road, not a discarded branch.
+
+Consequence that shapes the code: because disconnection is the NORMAL state,
+every read is cached and rendered **with its age**. Showing a two-day-old
+"all services healthy" as if current is the false-clean failure the parent repo
+keeps hitting; `web/src/store.js` returns `fresh` / `cached` / `none` and the
+UI must distinguish them.
 
 ---
 
