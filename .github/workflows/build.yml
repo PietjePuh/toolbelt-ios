@@ -42,22 +42,31 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
-      - name: Guard — is there anything to build yet?
-        id: guard
+      - name: Generate the Xcode project
         run: |
           set -euo pipefail
-          # The scaffold has no Xcode project yet. Say so plainly and stop with
-          # a green result rather than failing loudly on an empty repo — a red
-          # check on "nothing built yet" trains people to ignore this workflow.
-          if ! ls -d *.xcodeproj *.xcworkspace >/dev/null 2>&1; then
-            echo "no-project=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::No .xcodeproj yet — scaffold only. Skipping the build."
-            exit 0
-          fi
-          echo "no-project=false" >> "$GITHUB_OUTPUT"
+          # project.yml is the source of truth; the .xcodeproj is generated and
+          # gitignored. A checked-in pbxproj is opaque and conflicts badly.
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Test
+        run: |
+          set -euo pipefail
+          # Runs BEFORE the archive. The scanner's false-clean rule — an
+          # unreachable host reports unknown, never OK — is the single thing
+          # most worth failing this build over, so it gates the artefact.
+          #
+          # No xcpretty: it is not installed by default, and piping through a
+          # formatter that may be absent turns a real failure into a confusing
+          # one. Raw xcodebuild output is verbose but never lies about exit
+          # status.
+          xcodebuild test \
+            -scheme Toolbelt \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            CODE_SIGNING_ALLOWED=NO
 
       - name: Build archive
-        if: steps.guard.outputs.no-project == 'false'
         run: |
           set -euo pipefail
           SCHEME="$(xcodebuild -list -json | python3 -c 'import json,sys;print(json.load(sys.stdin)["project"]["schemes"][0])')"
@@ -75,7 +84,6 @@ jobs:
             archive
 
       - name: Package unsigned .ipa
-        if: steps.guard.outputs.no-project == 'false'
         run: |
           set -euo pipefail
           # An .ipa is just a zip with the .app inside Payload/. Doing it by
@@ -87,7 +95,6 @@ jobs:
           ls -lh build/Toolbelt-unsigned.ipa
 
       - name: Upload artifact
-        if: steps.guard.outputs.no-project == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: Toolbelt-unsigned-ipa
