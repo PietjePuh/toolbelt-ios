@@ -1,0 +1,30 @@
+{
+  "name": "Toolbelt (private)",
+  "identifier": "nl.pietjepuh.toolbelt.source",
+  "subtitle": "Home-lab companion, served over Tailscale",
+  "description": "A private AltStore source for the Developer Toolbelt iOS companion. Reachable only on the tailnet — nothing here is published to the internet.",
+  "iconURL": "https://pluto-kali.tail-scale.ts.net/altstore/icon.png",
+  "website": "https://github.com/PietjePuh/toolbelt-ios",
+  "tintColor": "#3B82F6",
+  "apps": [
+    {
+      "name": "Toolbelt",
+      "bundleIdentifier": "nl.pietjepuh.toolbelt",
+      "developerName": "PietjePuh",
+      "subtitle": "Home-lab and hub companion",
+      "localizedDescription": "Companion for the Developer Toolbelt. Shows local service health, the unified alert inbox, and a read-only finance glance, reaching the home lab over Tailscale.\n\nRead-only for finance by design: the desktop auto-trader's arming, kill-switch and daily-loss guarantees hold because there is exactly one path to an order. This app is not a second one.",
+      "iconURL": "https://pluto-kali.tail-scale.ts.net/altstore/icon.png",
+      "tintColor": "#3B82F6",
+      "category": "utilities",
+      "screenshots": [],
+      "versions": [],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSLocalNetworkUsageDescription": "Reaches the Toolbelt gateway on your tailnet."
+        }
+      }
+    }
+  ],
+  "news": []
+}

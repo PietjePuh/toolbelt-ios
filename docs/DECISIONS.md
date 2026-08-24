@@ -7,8 +7,32 @@ Written down so the next session does not re-derive them.
 
 ## OPEN — needs the owner
 
-### 1. Signing route
-Blocks: update/refresh handling, whether CI signs, whether TestFlight is better.
+### ~~1. Signing route~~ — SETTLED: AltStore
+See `docs/ALTSTORE.md`. Consequences now fixed:
+- Free Apple ID → **7-day** signing, background refresh. Prefer **SideStore**,
+  which refreshes over Wi-Fi via a pairing file rather than needing a computer.
+- **3-app cap** on free Apple IDs.
+- CI produces an **unsigned** `.ipa` — which is exactly what AltStore resigns.
+- **AltStore PAL** (EU, no 7-day limit) remains an option but is not a drop-in:
+  it distributes ADPs, not plain `.ipa`s. Recorded, not adopted.
+
+Still open under this heading: nothing blocking. Revisit only if the weekly
+refresh becomes annoying enough to justify €99/yr — at which point compare
+TestFlight rather than assuming sideloading.
+
+### ~~2. Where the IPA is hosted~~ — SETTLED: over the tailnet
+AltStore must fetch the source JSON and the `.ipa` from the phone, and
+**private-repo release assets require auth**, which AltStore does not send. The
+usual workaround is making the repo public.
+
+Not needed here: the phone (`iphone173`, 100.90.114.93) is already on the
+tailnet with this host (`pluto-kali`, 100.112.72.3), and Caddy is already
+running. Serve both files there. Repo stays private, nothing faces the
+internet, and Tailscale issues the real certificate iOS ATS requires.
+
+### 3. Was: private vs public repo
+Resolved by the above — **stays private**. macOS CI minutes still bill at 10x,
+which is why the build workflow is manual + PR-only rather than per-push.
 
 | option | cost | app lifetime | catch |
 |---|---|---|---|
@@ -18,11 +42,6 @@ Blocks: update/refresh handling, whether CI signs, whether TestFlight is better.
 
 Not decidable from here: it depends on the iPhone's iOS version and whether a
 paid account is wanted. **Ask before building refresh logic.**
-
-### 2. Private vs public repo
-Private today. macOS CI minutes bill at **10×** on private repos; they are free
-on public ones. Flipping to public is one click; flipping back does not
-un-publish history. Left private deliberately — revisit if CI cost bites.
 
 ### 3. Native SwiftUI vs a wrapper
 Scaffolded as native SwiftUI. A Capacitor/PWA wrapper would reuse the existing
