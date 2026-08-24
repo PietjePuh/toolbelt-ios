@@ -26,9 +26,9 @@ final class WatchTitleTests: XCTestCase {
     func testTitleWithSpecialCharactersIsEncoded() {
         let t = WatchTitle(id: 1, kind: .series, name: "Tom & Jerry: 100% Fun?")
         let url = t.imdbLink.url
-        XCTAssertNil(URLComponents(url: url, resolvingAgainstBaseURL: false)?.query?
-            .contains(" ") == true ? "space leaked" : nil)
-        // Round-trips back to exactly what we asked for.
+        let rawQuery = URLComponents(url: url, resolvingAgainstBaseURL: false)?.query ?? ""
+        XCTAssertFalse(rawQuery.contains(" "), "unencoded space in the query")
+        // …and it round-trips back to exactly what we asked for.
         let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?.first { $0.name == "q" }?.value
         XCTAssertEqual(q, "Tom & Jerry: 100% Fun?")
