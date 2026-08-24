@@ -22,10 +22,13 @@ struct RootView: View {
             DomainScanView(scanner: DomainScanner(gateway: gateway))
                 .tabItem { Label("Scan", systemImage: "magnifyingglass") }
 
-            // Finance, RSS and security feeds land here next. Deliberately not
-            // stubbed with placeholder tabs: an empty tab that looks like a
-            // feature is the "cosmetic thing that does not work" the parent
-            // repo just spent a PR deleting.
+            BrowserView(url: URL(string: "https://duckduckgo.com/")!)
+                .tabItem { Label("Browse", systemImage: "safari") }
+
+            // Feeds, watchlist and finance land here as each one works end to
+            // end. Deliberately not stubbed with placeholder tabs: an empty tab
+            // that looks like a feature is the "cosmetic thing that does not
+            // work" the parent repo just spent a PR deleting.
         }
     }
 }
