@@ -84,17 +84,22 @@ struct DomainScanView: View {
         }
     }
 
+    /// @ViewBuilder, not a plain `some View`: each branch returns a
+    /// differently-typed `Image` once a distinct `foregroundStyle` is applied,
+    /// and an opaque return type requires one concrete type. The builder wraps
+    /// them for us.
+    @ViewBuilder
     private func icon(for outcome: DomainScanner.Outcome) -> some View {
         switch outcome {
         case .ok:
-            return Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .finding:
-            return Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         case .unknown:
             // Deliberately NOT a green tick and not an error red — it is
             // neither. A question mark is the honest glyph for "we could not
             // find out".
-            return Image(systemName: "questionmark.circle.fill").foregroundStyle(.secondary)
+            Image(systemName: "questionmark.circle.fill").foregroundStyle(.secondary)
         }
     }
 
