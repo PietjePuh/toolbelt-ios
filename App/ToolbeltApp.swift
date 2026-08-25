@@ -37,30 +37,91 @@ struct RootView: View {
         }
     }
 
+    /// FIVE tabs, deliberately. iOS folds anything past the fifth into a
+    /// system "More" list, which buries features behind a generic label and
+    /// orders them by nothing at all. With seven features that fold was about
+    /// to happen by accident, so the grouping is chosen here instead.
+    ///
+    /// Grouped by what the person wants, not by which module implements it:
+    /// Films & series and Live TV are one intent ("something to watch"), and
+    /// the browser is plumbing every other tab already opens for you rather
+    /// than a destination.
     private var tabs: some View {
         TabView {
-            DomainScanView(scanner: DomainScanner(gateway: gateway))
-                .tabItem { Label("Scan", systemImage: "magnifyingglass") }
-
             FeedsView(gateway: gateway)
                 .tabItem { Label("Feeds", systemImage: "dot.radiowaves.up.forward") }
 
-            WatchView(gateway: gateway)
-                .tabItem { Label("Watch", systemImage: "film") }
+            MediaView(gateway: gateway)
+                .tabItem { Label("Media", systemImage: "play.tv") }
 
-            LiveTVView(gateway: gateway)
-                .tabItem { Label("Live TV", systemImage: "tv") }
+            FinanceView(gateway: gateway)
+                .tabItem { Label("Finance", systemImage: "chart.line.uptrend.xyaxis") }
 
-            BrowserView(url: URL(string: "https://duckduckgo.com/")!)
-                .tabItem { Label("Browse", systemImage: "safari") }
+            DomainScanView(scanner: DomainScanner(gateway: gateway))
+                .tabItem { Label("Security", systemImage: "shield.lefthalf.filled") }
 
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }
+            MoreView(gateway: gateway)
+                .tabItem { Label("More", systemImage: "ellipsis.circle") }
+        }
+    }
+}
 
-            // Live TV, the terminal and finance land here as each one works end
-            // to end. Deliberately not stubbed with placeholder tabs: an empty
-            // tab that looks like a feature is the "cosmetic thing that does
-            // not work" the parent repo just spent a PR deleting.
+/// Films & series and Live TV are switched, not nested. Nesting one under the
+/// other would make it a second-class feature for no reason.
+struct MediaView: View {
+    let gateway: Gateway
+    @State private var section: Section = .watch
+
+    enum Section: String, CaseIterable {
+        case watch = "Films & series"
+        case live  = "Live TV"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("Media section", selection: $section) {
+                ForEach(Section.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal)
+            .padding(.bottom, 6)
+
+            switch section {
+            case .watch: WatchView(gateway: gateway)
+            case .live:  LiveTVView(gateway: gateway)
+            }
+        }
+    }
+}
+
+/// Plumbing: reached when needed rather than competing for a tab slot with
+/// something you actually came here to do.
+struct MoreView: View {
+    let gateway: Gateway
+    @State private var browsing = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button { browsing = true } label: {
+                        Label("Browser", systemImage: "safari")
+                    }
+                } footer: {
+                    Text("Opens with no stored cookies, and leaves none behind.")
+                }
+
+                Section {
+                    NavigationLink { SettingsView() } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                }
+            }
+            .navigationTitle("More")
+            .fullScreenCover(isPresented: $browsing) {
+                BrowserView(url: URL(string: "https://duckduckgo.com/")!)
+            }
         }
     }
 }
