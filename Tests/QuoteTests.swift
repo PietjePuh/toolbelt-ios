@@ -143,11 +143,27 @@ final class QuoteTests: XCTestCase {
     }
 
     func testSymbolCannotSmuggleAPathOrQuery() {
-        // The symbol goes into the URL path. A slash or a question mark would
-        // let a pasted string retarget the request.
+        // The symbol is interpolated into the URL PATH, so the characters that
+        // matter are the ones that would retarget the request. `=` is NOT one
+        // of them and is deliberately kept, because FX symbols need it
+        // (EURUSD=X) — the separators are what must not survive.
+        for hostile in ["AAPL/../../admin", "AAPL?x=1", "AAPL#frag", "AAPL&y=2", "AAPL %20x"] {
+            let clean = QuoteService.normalise(hostile)
+            for forbidden in ["/", "?", "#", "&", " ", "%"] {
+                XCTAssertFalse(clean.contains(forbidden),
+                               "\(hostile) → \(clean) still contains \(forbidden)")
+            }
+        }
         XCTAssertEqual(QuoteService.normalise("AAPL/../../admin"), "AAPL....ADMIN")
-        XCTAssertEqual(QuoteService.normalise("AAPL?x=1"), "AAPLX1")
-        XCTAssertFalse(QuoteService.normalise("A/B").contains("/"))
+    }
+
+    func testHostileSymbolCannotChangeTheRequestTarget() {
+        // The end-to-end property the normalisation exists for.
+        let url = QuoteService.url(for: QuoteService.normalise("AAPL/../../v1/admin"))
+        XCTAssertEqual(url.host, "query1.finance.yahoo.com")
+        XCTAssertTrue(url.path.hasPrefix("/v8/finance/chart/"),
+                      "path was retargeted: \(url.path)")
+        XCTAssertFalse(url.path.contains("admin/"), "traversal survived: \(url.path)")
     }
 
     func testBuiltURLIsTheExpectedEndpoint() {
