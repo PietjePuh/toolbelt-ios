@@ -23,7 +23,12 @@ if ! diff=$(git diff --unified=0 "${base}...HEAD" 2>/dev/null); then
   exit 1
 fi
 
-added=$(printf '%s\n' "$diff" | grep -E '^\+' | grep -v '^\+\+\+' || true)
+# Both greps use -E. Without it the second is BASIC regex, where `\+` is the
+# "one or more" quantifier rather than a literal plus — so `^\+\+\+` matched
+# almost every line and `-v` discarded the whole diff. The gate then reported
+# "nothing added" for every change and passed everything, while looking like it
+# had run.
+added=$(printf '%s\n' "$diff" | grep -E '^\+' | grep -vE '^\+\+\+' || true)
 if [ -z "$added" ]; then
   echo "[secrets] nothing added — nothing to check"
   exit 0
