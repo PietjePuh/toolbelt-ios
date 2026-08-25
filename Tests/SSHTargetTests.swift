@@ -92,12 +92,28 @@ final class SSHTargetTests: XCTestCase {
         }
     }
 
-    func testLastAtWinsSoAPasswordLikePrefixCannotHideTheHost() throws {
-        // `a@b@real.example` connects to real.example. Taking the FIRST @ would
-        // treat "b@real.example" as the host and connect somewhere else.
-        let t = try SSHTarget.parse("a@b@real.example")
+    func testAnExtraAtCannotRedirectTheConnection() {
+        // The danger in `a@b@real.example` is splitting on the FIRST @, which
+        // would treat "b@real.example" as the host and connect somewhere the
+        // user never named.
+        //
+        // Splitting on the LAST @ makes the host real.example — correct — and
+        // the username "a@b", which is then refused because @ is not a legal
+        // username character. Refusing the whole address is the better outcome
+        // than connecting with a username no server will accept: either way it
+        // does not reach b@real.example, and this way the user is told.
+        XCTAssertThrowsError(try SSHTarget.parse("a@b@real.example")) { err in
+            XCTAssertEqual(err as? SSHTarget.ParseError, .invalidUser("a@b"))
+        }
+    }
+
+    func testTheHostIsTakenFromTheLastAt() throws {
+        // The same split, on an address where the username IS legal — proving
+        // the behaviour above comes from last-@ parsing rather than from the
+        // address happening to be rejected.
+        let t = try SSHTarget.parse("tim@real.example")
         XCTAssertEqual(t.host, "real.example")
-        XCTAssertEqual(t.user, "a@b")
+        XCTAssertEqual(t.user, "tim")
     }
 
     // MARK: - identity and round-trip
