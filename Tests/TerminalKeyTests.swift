@@ -145,3 +145,66 @@ final class TerminalKeyTests: XCTestCase {
         }
     }
 }
+
+/// Structural checks on the accessory bar's key sets.
+///
+/// These are not layout tests — they pin the DECISIONS about which keys are
+/// always reachable and that nothing is missing or duplicated. Layout is
+/// checked by eye; "escape is always on screen" should not be.
+final class KeyAccessoryLayoutTests: XCTestCase {
+
+    func testEscapeAndTabNeverScrollAway() {
+        // Escape is the way out of every mode in vim and tab is completion.
+        // They previously sat in the scrolling row, so reaching ^C pushed
+        // escape off screen — backwards for the two most-pressed keys.
+        XCTAssertTrue(KeyAccessoryBar.pinned.contains(.escape))
+        XCTAssertTrue(KeyAccessoryBar.pinned.contains(.tab))
+    }
+
+    func testPinnedKeysAreNotDuplicatedInTheScrollingRow() {
+        for key in KeyAccessoryBar.pinned {
+            XCTAssertFalse(KeyAccessoryBar.navigation.contains(key),
+                           "\(key.label) appears both pinned and in the scrolling row")
+        }
+    }
+
+    func testThePinnedRowStaysSmallEnoughToFit() {
+        // It shares a fixed-width row with two modifier buttons and the row
+        // picker. Adding a third or fourth key here would push the picker off
+        // a small iPhone, which is how "always visible" quietly stops being
+        // true.
+        XCTAssertLessThanOrEqual(KeyAccessoryBar.pinned.count, 2)
+    }
+
+    func testEveryKeyTheTerminalNeedsIsReachable() {
+        let reachable = Set(
+            (KeyAccessoryBar.pinned + KeyAccessoryBar.navigation).map(\.label)
+        )
+        // Nothing here can be typed on an iOS keyboard, so if one is missing it
+        // is simply unavailable to the user.
+        for required in ["esc", "tab", "⇤", "↑", "↓", "←", "→",
+                         "home", "end", "pgup", "pgdn", "⌫", "⌦", "⏎"] {
+            XCTAssertTrue(reachable.contains(required), "\(required) is not reachable")
+        }
+    }
+
+    func testTheCommonControlCodesAreOneTap() {
+        // Every other Ctrl combination is reachable by arming ctrl and typing
+        // the letter; these are the ones frequent enough to deserve a button.
+        for letter in ["c", "d", "z"] {
+            XCTAssertTrue(KeyAccessoryBar.quickControls.contains(letter),
+                          "^\(letter.uppercased()) should be one tap")
+        }
+    }
+
+    func testSymbolsCoverWhatAShellActuallyUses() {
+        let symbols = Set(KeyAccessoryBar.symbols)
+        for required in ["|", "~", "/", "-", "_", "$", "*", "&", ";", "'", "\""] {
+            XCTAssertTrue(symbols.contains(required), "\(required) is buried on the iOS keyboard")
+        }
+    }
+
+    func testNoSymbolIsListedTwice() {
+        XCTAssertEqual(Set(KeyAccessoryBar.symbols).count, KeyAccessoryBar.symbols.count)
+    }
+}
