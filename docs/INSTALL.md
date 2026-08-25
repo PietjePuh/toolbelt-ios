@@ -108,3 +108,62 @@ result is reported as unknown, never as "looks fine".
 
 **It stopped working after a week and I was away from Wi-Fi.**
 Expected on a free Apple ID. Reconnect and refresh.
+
+---
+
+## TestFlight (paid Apple Developer account, no computer needed)
+
+The AltStore route above needs AltServer on a computer on the same Wi-Fi — to
+install *and* to re-sign every 7 days. With a **paid** developer account none of
+that applies: TestFlight installs directly on the device and builds last **90
+days**.
+
+Everything below can be done from a phone browser.
+
+### One-time setup
+
+1. **Create an App Store Connect API key.**
+   appstoreconnect.apple.com → *Users and Access* → *Integrations* → *Keys* →
+   `+`. Give it the **App Manager** role — it needs that to register the bundle
+   ID on the first run. Download the `.p8`. **Apple lets you download it once.**
+
+2. **Note three values** from that page: the **Key ID**, the **Issuer ID**
+   (above the key list), and your **Team ID** from *Membership details*.
+
+3. **Base64-encode the `.p8`.** On a phone the simplest way is a shortcut or
+   any base64 tool; on a computer it is `base64 -i AuthKey_XXXX.p8`.
+
+4. **Add four repository secrets** — GitHub → Settings → Secrets and variables
+   → Actions:
+
+   | Secret | Value |
+   |---|---|
+   | `ASC_KEY_ID` | the Key ID |
+   | `ASC_ISSUER_ID` | the Issuer ID |
+   | `ASC_KEY_P8` | the base64 of the `.p8` |
+   | `APPLE_TEAM_ID` | the 10-character Team ID |
+
+   No certificate or provisioning profile is stored in the repo. `xcodebuild
+   -allowProvisioningUpdates` creates and renews them on the runner, and the
+   key is deleted from the runner at the end of the job.
+
+### Every build after that
+
+GitHub → **Actions** → **TestFlight** → *Run workflow*. Then on the phone:
+install **TestFlight** from the App Store, sign in with the Apple ID that is on
+your App Store Connect team, and the build appears once processing finishes
+(usually 5–15 minutes).
+
+**Internal testing only, deliberately.** Internal testers are people already on
+your team, and their builds are **not reviewed** — so a build is installable
+minutes after upload. External testing would mean Apple review, which is a
+separate decision.
+
+### Which route to use
+
+| | AltStore | TestFlight |
+|---|---|---|
+| Computer needed | Yes, to install and to refresh | No |
+| Expires after | 7 days (free) / 1 year (paid) | 90 days |
+| Apple review | None | None, for internal testers |
+| Setup | AltServer + USB once | Four secrets, once |

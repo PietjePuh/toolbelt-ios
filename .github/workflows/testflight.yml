@@ -1,0 +1,160 @@
+name: TestFlight
+
+# Signed build → App Store Connect → TestFlight.
+#
+# WHY THIS EXISTS
+# The unsigned .ipa in Releases needs AltStore, which needs AltServer on a
+# computer on the same Wi-Fi — both to install and to refresh every 7 days.
+# With a PAID Apple Developer account none of that is necessary: TestFlight
+# installs directly on the device, builds last 90 days, and nothing has to be
+# plugged in.
+#
+# INTERNAL testing only, deliberately. Internal testers are people already on
+# your App Store Connect team (up to 100) and their builds are NOT reviewed, so
+# a build is installable minutes after upload. External testing would mean
+# Apple review, which is a different decision entirely.
+#
+# Signing is handled by `-allowProvisioningUpdates` with an App Store Connect
+# API key, so no certificate or provisioning profile is stored in this repo.
+# Xcode creates and renews them on the runner.
+#
+# REQUIRED SECRETS (all four can be created from a phone browser):
+#   ASC_KEY_ID      App Store Connect → Users and Access → Integrations → Keys
+#   ASC_ISSUER_ID   shown above the key list on that same page
+#   ASC_KEY_P8      the downloaded .p8, base64-encoded
+#   APPLE_TEAM_ID   Membership details (10 characters)
+#
+# The key needs the App Manager role to register a bundle ID on first run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: "What's in this build (shown to testers)"
+        required: false
+        default: "Latest from main"
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Build, sign and upload
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Fail early if signing is not configured
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Checked up front rather than 20 minutes into a build, and named
+          # individually so the message says which one is missing.
+          missing=""
+          [ -z "$ASC_KEY_ID" ]     && missing="$missing ASC_KEY_ID"
+          [ -z "$ASC_ISSUER_ID" ]  && missing="$missing ASC_ISSUER_ID"
+          [ -z "$ASC_KEY_P8" ]     && missing="$missing ASC_KEY_P8"
+          [ -z "$APPLE_TEAM_ID" ]  && missing="$missing APPLE_TEAM_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing"
+            echo "See the header of .github/workflows/testflight.yml for where each comes from."
+            exit 1
+          fi
+          echo "All four signing secrets are present."
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Install the App Store Connect API key
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          # xcodebuild looks for the key by ID in this directory.
+          mkdir -p ~/private_keys
+          echo "$ASC_KEY_P8" | base64 --decode > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          chmod 600 ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+
+      - name: Set the build number from the run number
+        run: |
+          # App Store Connect rejects a build number it has already seen, and
+          # the value committed in project.yml is bumped by hand. The run
+          # number is monotonic and unique, so uploads never collide.
+          /usr/libexec/PlistBuddy -c \
+            "Set :CFBundleVersion ${{ github.run_number }}" App/Info.plist \
+            || echo "CFBundleVersion not present in Info.plist; xcodegen supplies it"
+          xcodegen generate
+
+      - name: Archive
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # project.yml disables signing so the unsigned-.ipa build works with
+          # no credentials. Signing is re-enabled here only, for this build.
+          xcodebuild archive \
+            -project Toolbelt.xcodeproj \
+            -scheme Toolbelt \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Toolbelt.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=YES \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
+
+      - name: Export and upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <!-- The app declares no non-exempt encryption, so this avoids the
+                 export-compliance question blocking the build in TestFlight. -->
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Toolbelt.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -rf ~/private_keys
+
+      - name: What happens next
+        run: |
+          echo "Uploaded. App Store Connect processes the build (usually 5-15 minutes),"
+          echo "then it appears in TestFlight on any device signed in with an account"
+          echo "on your team. Internal builds are not reviewed."
