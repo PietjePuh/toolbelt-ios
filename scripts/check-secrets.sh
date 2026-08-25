@@ -38,8 +38,23 @@ report() {
 
 # Credentials in a URL query string. The IPTV case, and the one most likely to
 # arrive by copy-paste from a provider email.
-if hits=$(printf '%s\n' "$added" | grep -iE '[?&](password|passwd|pwd|username|user|token|api_key|apikey|secret|auth)=[A-Za-z0-9._%-]{3,}' | grep -viE 'redact|placeholder|example|your-|<|\$\{|xxx|REDACTED' || true); [ -n "$hits" ]; then
-  report "credentials in a URL query string" "$hits"
+#
+# The placeholder test is applied to the VALUE, never to the whole line. The
+# first version excluded any line containing "example" — which exempted every
+# credential on an example.com-style host, i.e. exactly the shape a real
+# provider URL has. A whole-line exclusion means one innocent word anywhere
+# disables the check for that line.
+if pairs=$(printf '%s\n' "$added" | grep -oiE '[?&](password|passwd|pwd|username|user|token|api_key|apikey|secret|auth)=[A-Za-z0-9._%-]{3,}' || true); [ -n "$pairs" ]; then
+  if hits=$(printf '%s\n' "$pairs" | while IFS= read -r pair; do
+      value="${pair#*=}"
+      # Only an obviously fake VALUE is allowed through.
+      case "$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')" in
+        redacted|placeholder|your-*|your_*|xxx*|changeme|todo|none|null|test|example|dummy|foo|bar) ;;
+        *) printf '%s\n' "$pair" ;;
+      esac
+    done); [ -n "$hits" ]; then
+    report "credentials in a URL query string" "$hits"
+  fi
 fi
 
 # Private keys of any flavour.
