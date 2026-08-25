@@ -1,110 +1,95 @@
 import SwiftUI
 
-/// The accessory row above the keyboard.
+/// The accessory rows above the keyboard.
 ///
-/// Ctrl and Alt are STICKY rather than held: you cannot hold a modifier and
-/// press a letter on a touchscreen, so tapping `ctrl` arms it, the next key
-/// consumes it, and tapping it again cancels. Double-tapping locks it for
-/// repeated use (Ctrl-C, Ctrl-C, Ctrl-C).
+/// Three rows, switchable, because everything on one row means scrolling past
+/// what you need. The modifier state lives in `TerminalInput` rather than here,
+/// so arming Ctrl also applies to letters typed on the system keyboard — which
+/// is the whole point of it.
 struct KeyAccessoryBar: View {
-    let cursorMode: TerminalKey.CursorMode
-    let send: (Data) -> Void
+    @ObservedObject var input: TerminalInput
+    @State private var row: Row = .navigation
 
-    @State private var modifier: Modifier = .none
-
-    enum Modifier: Equatable {
-        case none
-        case control(locked: Bool)
-        case alt(locked: Bool)
-
-        var isControl: Bool { if case .control = self { return true }; return false }
-        var isAlt: Bool { if case .alt = self { return true }; return false }
-        var isLocked: Bool {
-            switch self {
-            case .control(let l), .alt(let l): return l
-            case .none: return false
-            }
-        }
+    enum Row: String, CaseIterable {
+        case navigation = "nav"
+        case symbols = "sym"
+        case function = "F"
     }
 
-    private let keys: [TerminalKey] = [
+    /// Movement, editing and the keys iOS simply does not have.
+    private let navigation: [TerminalKey] = [
         .escape, .tab, .backTab,
         .up, .down, .left, .right,
         .home, .end, .pageUp, .pageDown,
-        .delete
+        .backspace, .delete, .enter
     ]
 
+    /// The characters iOS buries two taps deep, all of which are constant
+    /// traffic in a shell.
+    private let symbols = ["|", "~", "/", "\\", "-", "_", "*", "$", "#", "&",
+                           ";", ":", "'", "\"", "`", "{", "}", "[", "]",
+                           "(", ")", "<", ">", "!", "?", "=", "+", "%", "@", "^"]
+
+    /// The control codes worth one tap. Any OTHER Ctrl combination is reachable
+    /// by arming ctrl and typing the letter — which is why there are not
+    /// twenty-six buttons here.
+    private let quickControls = ["c", "d", "z", "l", "r", "a", "e", "k", "u", "w"]
+
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        VStack(spacing: 0) {
+            Divider()
             HStack(spacing: 6) {
-                modifierButton("ctrl", active: modifier.isControl, locked: modifier.isLocked) {
-                    toggle(control: true)
-                }
-                modifierButton("alt", active: modifier.isAlt, locked: modifier.isLocked) {
-                    toggle(control: false)
-                }
+                modifierButton("ctrl", active: input.modifier.isControl,
+                               locked: input.modifier.isLocked) { input.toggleControl() }
+                modifierButton("alt", active: input.modifier.isAlt,
+                               locked: input.modifier.isLocked) { input.toggleAlt() }
 
                 Divider().frame(height: 22)
 
-                ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
-                    keyButton(key.label) { press(key) }
+                Picker("Row", selection: $row) {
+                    ForEach(Row.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
-
-                Divider().frame(height: 22)
-
-                // The control codes worth one tap rather than two.
-                ForEach(["c", "d", "z", "l", "r"], id: \.self) { letter in
-                    keyButton("^\(letter.uppercased())") {
-                        emit(.control(Character(letter)))
-                    }
-                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 132)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
+
+            Divider()
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    switch row {
+                    case .navigation:
+                        ForEach(Array(navigation.enumerated()), id: \.offset) { _, key in
+                            keyButton(key.label) { input.press(key) }
+                        }
+                        Divider().frame(height: 22)
+                        ForEach(quickControls, id: \.self) { letter in
+                            keyButton("^\(letter.uppercased())") {
+                                input.press(.control(Character(letter)))
+                            }
+                        }
+
+                    case .symbols:
+                        ForEach(symbols, id: \.self) { symbol in
+                            // Routed through `type` so an armed modifier
+                            // applies here too.
+                            keyButton(symbol) { input.type(symbol) }
+                        }
+
+                    case .function:
+                        ForEach(1...12, id: \.self) { n in
+                            keyButton("F\(n)") { input.press(.function(n)) }
+                        }
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+            }
         }
         .background(.thinMaterial)
-    }
-
-    /// A modifier plus a normal key. Ctrl+arrow is not meaningful here, so an
-    /// armed modifier applies only to text and is otherwise released without
-    /// sending anything unexpected.
-    private func press(_ key: TerminalKey) {
-        switch modifier {
-        case .none:
-            emit(key)
-        case .control, .alt:
-            // Arming ctrl and then pressing Tab should not silently send a
-            // plain Tab as though nothing was armed — release it and send the
-            // key on its own, which is what the user visibly asked for.
-            emit(key)
-        }
-    }
-
-    private func emit(_ key: TerminalKey) {
-        send(key.bytes(cursorMode: cursorMode))
-        if !modifier.isLocked { modifier = .none }
-    }
-
-    /// Text typed on the system keyboard, routed through the armed modifier.
-    func typed(_ string: String) {
-        guard let first = string.first else { return }
-        switch modifier {
-        case .control: emit(.control(first))
-        case .alt:     emit(.alt(first))
-        case .none:    emit(.text(string))
-        }
-    }
-
-    private func toggle(control: Bool) {
-        let wanted = control
-        let already = control ? modifier.isControl : modifier.isAlt
-        if already {
-            // arm → lock → off
-            modifier = modifier.isLocked ? .none
-                : (wanted ? .control(locked: true) : .alt(locked: true))
-        } else {
-            modifier = wanted ? .control(locked: false) : .alt(locked: false)
-        }
     }
 
     private func modifierButton(_ title: String, active: Bool, locked: Bool,
@@ -122,14 +107,15 @@ struct KeyAccessoryBar: View {
                         in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(active ? "\(title), armed" : title)
+        .accessibilityLabel(active ? (locked ? "\(title), locked" : "\(title), armed") : title)
     }
 
     private func keyButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.caption.monospaced())
-                .padding(.horizontal, 10).padding(.vertical, 6)
+                .frame(minWidth: 26)
+                .padding(.horizontal, 8).padding(.vertical, 7)
                 .background(Color.secondary.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
