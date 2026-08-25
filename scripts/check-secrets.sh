@@ -73,8 +73,24 @@ if hits=$(printf '%s\n' "$added" | grep -E 'eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]
 fi
 
 # Credentials in the authority: https://user:pass@host
-if hits=$(printf '%s\n' "$added" | grep -iE 'https?://[A-Za-z0-9._%-]+:[A-Za-z0-9._%-]{3,}@' | grep -viE 'redact|placeholder|example|user:pass' || true); [ -n "$hits" ]; then
-  report "credentials in a URL authority" "$hits"
+#
+# Same value-level rule as the query-string check above, and for the same
+# reason: a whole-line exclusion containing "example" exempted every credential
+# on an example.com-style host — which is the shape most pasted URLs have. This
+# check was fixed one round later than the other one, which is how a repeated
+# mistake survives.
+if pairs=$(printf '%s\n' "$added" | grep -oiE 'https?://[A-Za-z0-9._%-]+:[A-Za-z0-9._%-]{3,}@' || true); [ -n "$pairs" ]; then
+  if hits=$(printf '%s\n' "$pairs" | while IFS= read -r pair; do
+      creds="${pair#*//}"
+      secret="${creds%@}"
+      secret="${secret#*:}"
+      case "$(printf '%s' "$secret" | tr '[:upper:]' '[:lower:]')" in
+        redacted|placeholder|pass|password|your-*|your_*|xxx*|changeme|todo|example) ;;
+        *) printf '%s\n' "$pair" ;;
+      esac
+    done); [ -n "$hits" ]; then
+    report "credentials in a URL authority" "$hits"
+  fi
 fi
 
 if [ "$fail" -ne 0 ]; then
