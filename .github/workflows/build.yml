@@ -48,6 +48,21 @@ permissions:
   contents: write
 
 jobs:
+  secrets:
+    name: No secrets in the diff
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan added lines
+        run: |
+          # NOT `|| true`: the gate fails closed on a missing base ref, so
+          # swallowing a fetch failure would defeat that.
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          bash scripts/check-secrets.sh "origin/${{ github.base_ref }}"
+
   build:
     name: Build unsigned .ipa
     runs-on: macos-15
