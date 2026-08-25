@@ -100,6 +100,7 @@ public actor Gateway {
         req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         for (k, v) in request.headers { req.setValue(v, forHTTPHeaderField: k) }
 
+        let started = Date()
         do {
             let (data, response) = try await session.data(for: req)
             guard let http = response as? HTTPURLResponse else {
@@ -111,12 +112,27 @@ public actor Gateway {
                     headers[key.lowercased()] = value
                 }
             }
+            let ms = Int(Date().timeIntervalSince(started) * 1000)
+            await DiagnosticLog.shared.log(
+                (200..<400).contains(http.statusCode) ? .info : .warning,
+                "http",
+                "\(request.method) \(request.url.absoluteString) → \(http.statusCode), \(data.count)B in \(ms)ms"
+            )
             return Response(status: http.statusCode, headers: headers, body: data)
         } catch let failure as Failure {
             throw failure
         } catch {
             // URLError.cancelled also lands here on timeout. All of these mean
             // the same thing to a caller: no answer was obtained.
+            //
+            // Logged with the tailnet hint attached, because "no answer" from a
+            // 100.x address usually means the VPN is down rather than the host.
+            let hint = request.url.host.flatMap { TailnetHost.timeoutHint(for: $0) }
+            await DiagnosticLog.shared.error(
+                "http",
+                "\(request.method) \(request.url.absoluteString) → no answer: \(error.localizedDescription)"
+                    + (hint.map { " — \($0)" } ?? "")
+            )
             throw Failure.unreachable(error.localizedDescription)
         }
     }

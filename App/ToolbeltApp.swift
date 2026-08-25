@@ -147,6 +147,9 @@ struct MoreView: View {
                     NavigationLink { SettingsView() } label: {
                         Label("Settings", systemImage: "gearshape")
                     }
+                    NavigationLink { DiagnosticsView() } label: {
+                        Label("Diagnostics", systemImage: "stethoscope")
+                    }
                 }
             }
             .navigationTitle("More")
