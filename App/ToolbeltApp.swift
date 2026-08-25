@@ -57,7 +57,7 @@ struct RootView: View {
             FinanceView(gateway: gateway)
                 .tabItem { Label("Finance", systemImage: "chart.line.uptrend.xyaxis") }
 
-            DomainScanView(scanner: DomainScanner(gateway: gateway))
+            SecurityView(gateway: gateway)
                 .tabItem { Label("Security", systemImage: "shield.lefthalf.filled") }
 
             MoreView(gateway: gateway)
@@ -90,6 +90,37 @@ struct MediaView: View {
             switch section {
             case .watch: WatchView(gateway: gateway)
             case .live:  LiveTVView(gateway: gateway)
+            }
+        }
+    }
+}
+
+/// Scanning a host you care about, and the list of what is being exploited
+/// generally. Two halves of the same question, so one tab.
+struct SecurityView: View {
+    let gateway: Gateway
+    @State private var section: Section = .scan
+
+    enum Section: String, CaseIterable {
+        case scan = "Scan a domain"
+        case kev  = "Exploited in the wild"
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Picker("Security section", selection: $section) {
+                    ForEach(Section.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal)
+                .padding(.bottom, 6)
+
+                switch section {
+                case .scan: DomainScanView(scanner: DomainScanner(gateway: gateway))
+                case .kev:  SecurityAdvisoriesView(gateway: gateway)
+                }
             }
         }
     }
