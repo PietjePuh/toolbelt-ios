@@ -66,6 +66,12 @@ sits broken.
       with the reason BEFORE the user taps.
 - [x] Cellular guard — the WiFi-only setting actually enforces, with a
       one-time override.
+- [x] Finance glance — read-only watchlist. Four staleness states, because
+      "closed", "feed stalled" and "age unknown" need different words.
+- [x] Security advisories — CISA KEV. An error page is never an empty
+      catalogue; ransomware use is tri-state; age is measured from CISA's
+      publication date.
+- [x] Five tabs, grouped by intent rather than by module.
 
 ## Next, in order
 
@@ -90,15 +96,16 @@ also the first settings screen — so it decides where user config lives.
 Note for whoever builds it: `notConfigured`, `keyRejected` and an empty result
 are three different states and must read as three different things on screen.
 
-### 3. Finance glance  ← next
+### 3. Finance glance
 Read-only. Watchlist + last price from public market data. **No trading, ever** —
 the desktop trader's guarantees hold because there is exactly one path to an
 order. Indicators shown with their numbers; no price targets, no
 recommendations.
 
-### 4. Security feeds
-CVE / KEV / threat intel lists. Straight reads, same staleness discipline as
-everything else.
+### 4. SSH terminal UI  ← next; the security layer is already done
+swift-nio-ssh for transport, a terminal view for rendering. Identity and
+host-key verification exist and are tested, so this sits on something correct
+rather than having security retrofitted afterwards.
 
 ### 5. VLC player
 VLCKit is pinned by revision (its tags are not valid semver). Play a local or
