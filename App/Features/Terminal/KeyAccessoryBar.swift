@@ -16,9 +16,16 @@ struct KeyAccessoryBar: View {
         case function = "F"
     }
 
-    /// Movement, editing and the keys iOS simply does not have.
-    private let navigation: [TerminalKey] = [
-        .escape, .tab, .backTab,
+    /// Never scrolls away. These are the keys you reach for constantly and
+    /// cannot afford to hunt for: esc is the way out of every mode in vim, and
+    /// tab is completion. They used to sit in the scrolling row, which meant
+    /// scrolling right for ^C pushed escape off screen — exactly backwards for
+    /// the two most-pressed keys on the bar.
+    static let pinned: [TerminalKey] = [.escape, .tab]
+
+    /// Movement, editing and the rest of what iOS does not have.
+    static let navigation: [TerminalKey] = [
+        .backTab,
         .up, .down, .left, .right,
         .home, .end, .pageUp, .pageDown,
         .backspace, .delete, .enter
@@ -26,14 +33,14 @@ struct KeyAccessoryBar: View {
 
     /// The characters iOS buries two taps deep, all of which are constant
     /// traffic in a shell.
-    private let symbols = ["|", "~", "/", "\\", "-", "_", "*", "$", "#", "&",
+    static let symbols = ["|", "~", "/", "\\", "-", "_", "*", "$", "#", "&",
                            ";", ":", "'", "\"", "`", "{", "}", "[", "]",
                            "(", ")", "<", ">", "!", "?", "=", "+", "%", "@", "^"]
 
     /// The control codes worth one tap. Any OTHER Ctrl combination is reachable
     /// by arming ctrl and typing the letter — which is why there are not
     /// twenty-six buttons here.
-    private let quickControls = ["c", "d", "z", "l", "r", "a", "e", "k", "u", "w"]
+    static let quickControls = ["c", "d", "z", "l", "r", "a", "e", "k", "u", "w"]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,14 +51,18 @@ struct KeyAccessoryBar: View {
                 modifierButton("alt", active: input.modifier.isAlt,
                                locked: input.modifier.isLocked) { input.toggleAlt() }
 
-                Divider().frame(height: 22)
+                ForEach(Array(Self.pinned.enumerated()), id: \.offset) { _, key in
+                    keyButton(key.label) { input.press(key) }
+                }
+
+                Spacer(minLength: 4)
 
                 Picker("Row", selection: $row) {
                     ForEach(Row.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 132)
+                .frame(width: 116)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -62,18 +73,18 @@ struct KeyAccessoryBar: View {
                 HStack(spacing: 6) {
                     switch row {
                     case .navigation:
-                        ForEach(Array(navigation.enumerated()), id: \.offset) { _, key in
+                        ForEach(Array(Self.navigation.enumerated()), id: \.offset) { _, key in
                             keyButton(key.label) { input.press(key) }
                         }
                         Divider().frame(height: 22)
-                        ForEach(quickControls, id: \.self) { letter in
+                        ForEach(Self.quickControls, id: \.self) { letter in
                             keyButton("^\(letter.uppercased())") {
                                 input.press(.control(Character(letter)))
                             }
                         }
 
                     case .symbols:
-                        ForEach(symbols, id: \.self) { symbol in
+                        ForEach(Self.symbols, id: \.self) { symbol in
                             // Routed through `type` so an armed modifier
                             // applies here too.
                             keyButton(symbol) { input.type(symbol) }
