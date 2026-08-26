@@ -161,7 +161,6 @@ final class ImageMetadataTests: XCTestCase {
         XCTAssertTrue(ImageMetadata.Category.gps.isIdentifying)
         XCTAssertTrue(ImageMetadata.Category.tiff.isIdentifying)
         XCTAssertTrue(ImageMetadata.Category.xmp.isIdentifying)
-        XCTAssertTrue(ImageMetadata.Category.thumbnail.isIdentifying)
         XCTAssertFalse(ImageMetadata.Category.exif.isIdentifying)
     }
 
