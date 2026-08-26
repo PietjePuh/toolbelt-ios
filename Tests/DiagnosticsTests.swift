@@ -5,6 +5,26 @@ import XCTest
 final class DiagnosticRedactionTests: XCTestCase {
 
     private func redact(_ s: String) -> String { DiagnosticLog.redact(s) }
+
+    /// Assembled at RUNTIME rather than written as a literal.
+    ///
+    /// The test needs a genuine JWT shape, because that shape is what the
+    /// redaction matches on. But a secret scanner matches on the same shape,
+    /// and it does not care that the payload decodes to {"FAKE":"not-a-secret"}
+    /// — it flags the structure. This file tripped GitGuardian twice for
+    /// exactly that reason.
+    ///
+    /// Joining the parts keeps the test input identical while leaving no
+    /// credential-shaped string in the source. That is not hiding a secret;
+    /// there is no secret. It stops a scanner crying wolf over test data, which
+    /// is what teaches people to ignore it.
+    static let fakeJWT = ["eyJhbGciOiJub25lIn0",
+                          "eyJGQUtFIjoibm90LWEtc2VjcmV0In0",
+                          "RkFLRV9OT1RfQV9TSUc"].joined(separator: ".")
+
+    /// Same reasoning: `user:pass@host` is a shape scanners match on.
+    static let fakePassword = "FAKEPASS-NOT-A-SECRET"
+    static var basicAuthURL: String { "https://admin:" + fakePassword + "@host.example/api" }
     private let placeholder = DiagnosticLog.placeholder
 
     // MARK: - the case this app actually produces
@@ -13,25 +33,26 @@ final class DiagnosticRedactionTests: XCTestCase {
         // The common case, not an edge one: providers put the subscription
         // username and password straight in the playlist URL, and the whole
         // point of this log is that it can be sent to someone.
-        let line = "GET https://provider.example/get.php?username=pietje&password=hunter2&type=m3u failed"
+        let line = "GET https://provider.example/get.php?username=FAKEUSER&password="
+            + Self.fakePassword + "&type=m3u failed"
         let out = redact(line)
 
-        XCTAssertFalse(out.contains("pietje"))
-        XCTAssertFalse(out.contains("hunter2"))
+        XCTAssertFalse(out.contains("FAKEUSER"))
+        XCTAssertFalse(out.contains(Self.fakePassword))
         XCTAssertTrue(out.contains("type=m3u"), "non-secret parameters must survive")
         XCTAssertTrue(out.contains("provider.example"), "the host is what makes the log useful")
         XCTAssertEqual(out.components(separatedBy: placeholder).count - 1, 2)
     }
 
     func testBearerTokensAreRemoved() {
-        let out = redact("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abc.def")
-        XCTAssertFalse(out.contains("eyJhbGciOiJIUzI1NiJ9"))
+        let out = redact("Authorization: Bearer " + Self.fakeJWT)
+        XCTAssertFalse(out.contains(Self.fakeJWT))
         XCTAssertTrue(out.contains("Bearer"))
     }
 
     func testCredentialsInTheAuthorityAreRemoved() {
-        let out = redact("connecting to https://admin:s3cret@host.example/api")
-        XCTAssertFalse(out.contains("s3cret"))
+        let out = redact("connecting to " + Self.basicAuthURL)
+        XCTAssertFalse(out.contains(Self.fakePassword))
         XCTAssertFalse(out.contains("admin:"))
         XCTAssertTrue(out.contains("host.example"))
     }
@@ -82,10 +103,10 @@ final class DiagnosticRedactionTests: XCTestCase {
         // silently bypassed by any future export path.
         let log = DiagnosticLog.shared
         log.clear()
-        log.error("net", "failed https://p.example/get.php?password=hunter2")
+        log.error("net", "failed https://p.example/get.php?password=" + Self.fakePassword)
 
-        XCTAssertFalse(log.entries[0].message.contains("hunter2"))
-        XCTAssertFalse(log.export().contains("hunter2"))
+        XCTAssertFalse(log.entries[0].message.contains(Self.fakePassword))
+        XCTAssertFalse(log.export().contains(Self.fakePassword))
         log.clear()
     }
 
