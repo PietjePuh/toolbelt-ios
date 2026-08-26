@@ -22,7 +22,7 @@ public enum ImageMetadata {
 
     /// A category of metadata, named as the user would think of it.
     public enum Category: String, CaseIterable, Sendable {
-        case gps, exif, tiff, iptc, xmp, makerApple, thumbnail
+        case gps, exif, tiff, iptc, xmp, makerApple
 
         public var label: String {
             switch self {
@@ -32,7 +32,6 @@ public enum ImageMetadata {
             case .iptc:       return "Captions, credits and keywords"
             case .xmp:        return "Adobe XMP (often a second copy of location)"
             case .makerApple: return "Apple device data"
-            case .thumbnail:  return "Embedded preview image"
             }
         }
 
@@ -40,7 +39,7 @@ public enum ImageMetadata {
         /// what is left over by how much it matters.
         public var isIdentifying: Bool {
             switch self {
-            case .gps, .tiff, .makerApple, .xmp, .thumbnail: return true
+            case .gps, .tiff, .makerApple, .xmp: return true
             case .exif, .iptc: return false
             }
         }
@@ -53,7 +52,6 @@ public enum ImageMetadata {
             case .iptc:       return kCGImagePropertyIPTCDictionary
             case .makerApple: return kCGImagePropertyMakerAppleDictionary
             case .xmp:        return nil        // handled by not copying it
-            case .thumbnail:  return nil        // handled by not creating one
             }
         }
     }
@@ -112,8 +110,25 @@ public enum ImageMetadata {
         // detectable from the raw bytes, which is also how it survives a
         // dictionary-only strip.
         if containsXMP(data) { found.append(.xmp) }
-        if hasThumbnail(source) { found.append(.thumbnail) }
         return found
+    }
+
+    /// How thorough to be.
+    public enum Mode: Sendable, Equatable {
+        /// Drop metadata, keep the encoded pixels. No quality loss. Verified,
+        /// and escalated to `guaranteed` if anything identifying survives.
+        case automatic
+        /// Always decode and write afresh. Nothing can survive, because nothing
+        /// is copied — at the cost of a re-compression.
+        ///
+        /// THIS IS THE ONLY WAY TO BE SURE ABOUT AN EMBEDDED THUMBNAIL. The
+        /// public ImageIO API cannot tell you whether one is present:
+        /// `CGImageSourceCreateThumbnailAtIndex` GENERATES a thumbnail when
+        /// none exists, so a positive result means nothing. Rather than report
+        /// a detection this code cannot actually make, thumbnails are not
+        /// listed as a detectable category at all — and this mode removes them
+        /// by construction.
+        case guaranteed
     }
 
     /// Strip everything identifying, then VERIFY by re-reading the result — and
@@ -130,7 +145,8 @@ public enum ImageMetadata {
     /// is decoded and written afresh. Nothing can survive that, because nothing
     /// is copied. Costing a re-compression to guarantee a photo does not carry
     /// your address is the right trade, and the report says which path ran.
-    public static func scrub(_ data: Data) throws -> (data: Data, report: Report) {
+    public static func scrub(_ data: Data,
+                             mode: Mode = .automatic) throws -> (data: Data, report: Report) {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetCount(source) > 0 else {
             throw ScrubError.notAnImage
@@ -140,6 +156,15 @@ public enum ImageMetadata {
         }
 
         let found = (try? inspect(data)) ?? []
+
+        if mode == .guaranteed {
+            let redone = try reencode(source: source, type: type)
+            return (redone, Report(method: .reencoded,
+                                   found: found,
+                                   remaining: (try? inspect(redone)) ?? Category.allCases,
+                                   bytesBefore: data.count,
+                                   bytesAfter: redone.count))
+        }
 
         let output = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(
@@ -250,8 +275,4 @@ public enum ImageMetadata {
         return data.range(of: marker) != nil
     }
 
-    static func hasThumbnail(_ source: CGImageSource) -> Bool {
-        let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageIfAbsent: false]
-        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) != nil
-    }
 }
