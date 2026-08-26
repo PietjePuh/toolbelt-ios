@@ -58,7 +58,18 @@ public enum ImageMetadata {
         }
     }
 
+    /// How the file was produced. Surfaced because the two paths have
+    /// different costs and the user is entitled to know which one ran.
+    public enum Method: String, Equatable, Sendable {
+        /// Pixels copied untouched; only metadata dropped. No quality loss.
+        case lossless
+        /// Re-encoded from the decoded image. Guarantees nothing survives,
+        /// because nothing is copied — at the cost of a re-compression.
+        case reencoded
+    }
+
     public struct Report: Equatable, Sendable {
+        public let method: Method
         /// Categories present in the original.
         public let found: [Category]
         /// Categories STILL present after scrubbing, verified by re-reading.
@@ -105,7 +116,20 @@ public enum ImageMetadata {
         return found
     }
 
-    /// Strip everything identifying, then VERIFY by re-reading the result.
+    /// Strip everything identifying, then VERIFY by re-reading the result — and
+    /// if anything identifying survived, re-encode instead.
+    ///
+    /// The lossless path copies the encoded pixels and drops the metadata
+    /// dictionaries. It is the right default: no re-compression, no quality
+    /// loss. But it does not remove everything — an embedded thumbnail is
+    /// carried across by `CGImageDestinationAddImageFromSource` regardless of
+    /// `kCGImageDestinationEmbedThumbnail`, which is not obvious and was found
+    /// by the verification step failing rather than by reading the docs.
+    ///
+    /// So when verification finds something identifying still there, the image
+    /// is decoded and written afresh. Nothing can survive that, because nothing
+    /// is copied. Costing a re-compression to guarantee a photo does not carry
+    /// your address is the right trade, and the report says which path ran.
     public static func scrub(_ data: Data) throws -> (data: Data, report: Report) {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetCount(source) > 0 else {
@@ -143,11 +167,46 @@ public enum ImageMetadata {
         // The verification step. Everything above is an attempt; this is the
         // only thing that justifies telling the user it worked.
         let remaining = (try? inspect(scrubbed)) ?? Category.allCases
+        let stillIdentifying = remaining.filter(\.isIdentifying)
 
-        return (scrubbed, Report(found: found,
-                                 remaining: remaining,
-                                 bytesBefore: data.count,
-                                 bytesAfter: scrubbed.count))
+        if stillIdentifying.isEmpty {
+            return (scrubbed, Report(method: .lossless,
+                                     found: found,
+                                     remaining: remaining,
+                                     bytesBefore: data.count,
+                                     bytesAfter: scrubbed.count))
+        }
+
+        // Fall back: decode and write a fresh image. Verified again, because a
+        // fallback that is assumed to work is the same mistake one level down.
+        let redone = try reencode(source: source, type: type)
+        let afterRedo = (try? inspect(redone)) ?? Category.allCases
+
+        return (redone, Report(method: .reencoded,
+                               found: found,
+                               remaining: afterRedo,
+                               bytesBefore: data.count,
+                               bytesAfter: redone.count))
+    }
+
+    /// Decode to pixels and write a new file. Carries nothing over by
+    /// construction.
+    static func reencode(source: CGImageSource, type: CFString) throws -> Data {
+        guard let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            throw ScrubError.notAnImage
+        }
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            output as CFMutableData, type, 1, nil) else {
+            throw ScrubError.unsupportedFormat(type as String)
+        }
+        let options: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: 0.92,
+            kCGImageDestinationEmbedThumbnail: false
+        ]
+        CGImageDestinationAddImage(destination, image, options as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { throw ScrubError.writeFailed }
+        return output as Data
     }
 
     /// Write chosen fields back in — the other half of the request. Only the

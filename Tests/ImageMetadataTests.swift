@@ -80,11 +80,30 @@ final class ImageMetadataTests: XCTestCase {
     }
 
     func testTheEmbeddedThumbnailIsNotCarriedOver() throws {
-        // The subtle one: the preview is a second image with its own metadata,
-        // and it survives a strip that only clears the top-level dictionaries.
+        // The subtle one, and the reason the fallback exists: the preview is a
+        // second image with its own metadata, and
+        // CGImageDestinationAddImageFromSource carries it across regardless of
+        // kCGImageDestinationEmbedThumbnail. The lossless pass cannot remove
+        // it; verification catches that and the re-encode does.
         let original = try makePhoto(thumbnail: true)
-        let (scrubbed, _) = try ImageMetadata.scrub(original)
+        let (scrubbed, report) = try ImageMetadata.scrub(original)
         XCTAssertFalse(try ImageMetadata.inspect(scrubbed).contains(.thumbnail))
+        XCTAssertTrue(report.remainingIdentifying.isEmpty,
+                      "left over: \(report.remainingIdentifying.map(\.rawValue))")
+    }
+
+    func testTheFallbackOnlyRunsWhenItIsNeeded() throws {
+        // Re-encoding costs quality, so it must not be the default. A file that
+        // the lossless pass fully cleans should never be recompressed.
+        let (_, report) = try ImageMetadata.scrub(try makePhoto(withGPS: true, thumbnail: false))
+        XCTAssertTrue(report.remainingIdentifying.isEmpty)
+        XCTAssertEqual(report.method, .lossless,
+                       "recompressed a file that did not need it")
+    }
+
+    func testTheReportSaysWhichPathRan() throws {
+        let (_, report) = try ImageMetadata.scrub(try makePhoto(thumbnail: true))
+        XCTAssertEqual(report.method, .reencoded)
     }
 
     func testTheReportIsBuiltFromRereadingTheOutput() throws {
