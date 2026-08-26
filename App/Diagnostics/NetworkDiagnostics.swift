@@ -54,7 +54,10 @@ public final class NetworkDiagnostics: ObservableObject {
 
     /// utun is what Tailscale, WireGuard and iCloud Private Relay use; ppp,
     /// ipsec and tap cover the older VPN types.
-    static func isTunnelInterface(_ name: String) -> Bool {
+    /// `nonisolated` for the same reason as its caller: it is pure, and
+    /// `hasVPNInterface()` — which IS nonisolated — cannot call a main-actor
+    /// method. Marking one and not the other is what broke the build.
+    nonisolated static func isTunnelInterface(_ name: String) -> Bool {
         let lower = name.lowercased()
         for prefix in ["utun", "tap", "tun", "ppp", "ipsec"] where lower.hasPrefix(prefix) {
             return true

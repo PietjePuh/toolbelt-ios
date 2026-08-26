@@ -5,6 +5,13 @@ import XCTest
 final class DiagnosticRedactionTests: XCTestCase {
 
     private func redact(_ s: String) -> String { DiagnosticLog.redact(s) }
+
+    /// Structurally a JWT so the redaction is genuinely exercised, but the
+    /// payload decodes to {"FAKE":"not-a-secret"} — because a realistic-looking
+    /// token in a PUBLIC repo trips secret scanners, and a scanner that cries
+    /// wolf over test data trains people to ignore it. This file caused exactly
+    /// that on PR #11.
+    static let fakeJWT = "eyJhbGciOiJub25lIn0.eyJGQUtFIjoibm90LWEtc2VjcmV0In0.RkFLRV9OT1RfQV9TSUc"
     private let placeholder = DiagnosticLog.placeholder
 
     // MARK: - the case this app actually produces
@@ -13,25 +20,25 @@ final class DiagnosticRedactionTests: XCTestCase {
         // The common case, not an edge one: providers put the subscription
         // username and password straight in the playlist URL, and the whole
         // point of this log is that it can be sent to someone.
-        let line = "GET https://provider.example/get.php?username=pietje&password=hunter2&type=m3u failed"
+        let line = "GET https://provider.example/get.php?username=FAKEUSER&password=FAKEPASS-NOT-A-SECRET&type=m3u failed"
         let out = redact(line)
 
-        XCTAssertFalse(out.contains("pietje"))
-        XCTAssertFalse(out.contains("hunter2"))
+        XCTAssertFalse(out.contains("FAKEUSER"))
+        XCTAssertFalse(out.contains("FAKEPASS-NOT-A-SECRET"))
         XCTAssertTrue(out.contains("type=m3u"), "non-secret parameters must survive")
         XCTAssertTrue(out.contains("provider.example"), "the host is what makes the log useful")
         XCTAssertEqual(out.components(separatedBy: placeholder).count - 1, 2)
     }
 
     func testBearerTokensAreRemoved() {
-        let out = redact("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abc.def")
-        XCTAssertFalse(out.contains("eyJhbGciOiJIUzI1NiJ9"))
+        let out = redact("Authorization: Bearer " + Self.fakeJWT)
+        XCTAssertFalse(out.contains(Self.fakeJWT))
         XCTAssertTrue(out.contains("Bearer"))
     }
 
     func testCredentialsInTheAuthorityAreRemoved() {
-        let out = redact("connecting to https://admin:s3cret@host.example/api")
-        XCTAssertFalse(out.contains("s3cret"))
+        let out = redact("connecting to https://admin:FAKEPASS-NOT-A-SECRET@host.example/api")
+        XCTAssertFalse(out.contains("FAKEPASS-NOT-A-SECRET"))
         XCTAssertFalse(out.contains("admin:"))
         XCTAssertTrue(out.contains("host.example"))
     }
@@ -82,10 +89,10 @@ final class DiagnosticRedactionTests: XCTestCase {
         // silently bypassed by any future export path.
         let log = DiagnosticLog.shared
         log.clear()
-        log.error("net", "failed https://p.example/get.php?password=hunter2")
+        log.error("net", "failed https://p.example/get.php?password=FAKEPASS-NOT-A-SECRET")
 
-        XCTAssertFalse(log.entries[0].message.contains("hunter2"))
-        XCTAssertFalse(log.export().contains("hunter2"))
+        XCTAssertFalse(log.entries[0].message.contains("FAKEPASS-NOT-A-SECRET"))
+        XCTAssertFalse(log.export().contains("FAKEPASS-NOT-A-SECRET"))
         log.clear()
     }
 
