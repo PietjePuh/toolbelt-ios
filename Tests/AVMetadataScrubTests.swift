@@ -13,6 +13,18 @@ final class AVMetadataClassificationTests: XCTestCase {
         XCTAssertEqual(classify("mdta/com.apple.quicktime.location.ISO6709"), .location)
     }
 
+    func testFourCharacterCodesAreMatchedExplicitly() {
+        // The ISO user data codes are four characters and do NOT contain the
+        // words a substring check looks for: "©mak" is not "make", "©too" is
+        // not "tool". Matching them by substring silently classified the
+        // device make of any converted file as harmless `other`.
+        XCTAssertEqual(classify("udta/©mak"), .device)
+        XCTAssertEqual(classify("udta/©mod"), .device)
+        XCTAssertEqual(classify("udta/©too"), .software)
+        XCTAssertEqual(classify("udta/©day"), .creationDate)
+        XCTAssertEqual(classify("udta/©nam"), .title)
+    }
+
     func testTheOlderISOUserDataLocationKey() {
         // The one that gets missed: a file that has been through a converter
         // often carries its location ONLY here, so checking the QuickTime key

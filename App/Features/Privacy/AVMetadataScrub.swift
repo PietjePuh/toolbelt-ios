@@ -54,20 +54,32 @@ public enum AVMetadataScrub {
     public static func classify(_ identifier: String) -> Category {
         let id = identifier.lowercased()
 
-        // Location. The ISO user data key is `©xyz`; the copyright sign is
-        // often mangled by tooling, so the four-character suffix is matched
-        // rather than the exact byte sequence.
-        if id.contains("location") || id.hasSuffix("xyz") || id.contains("gps") {
-            return .location
+        // ISO user data uses FOUR-CHARACTER codes — ©xyz, ©mak, ©too — and
+        // they have no convenient constants. They are matched explicitly
+        // because substring matching does not work on them: "©mak" does not
+        // contain "make", and "©too" does not contain "tool". An earlier
+        // version missed both and classified the device make of any converted
+        // file as `other`.
+        let code = String(id.suffix(3))
+        switch code {
+        case "xyz":                      return .location
+        case "mak", "mod":               return .device
+        case "too", "swr", "enc":        return .software
+        case "day":                      return .creationDate
+        case "nam", "art", "alb", "cmt", "des", "cpy", "wrt":
+                                         return .title
+        default:                         break
         }
+
+        // Longer, dotted keys — the QuickTime metadata space.
+        if id.contains("location") || id.contains("gps") { return .location }
         if id.contains("make") || id.contains("model") || id.contains("device") {
             return .device
         }
         if id.contains("software") || id.contains("encoder") || id.contains("tool") {
             return .software
         }
-        if id.contains("creationdate") || id.contains("creation_date")
-            || id.hasSuffix("day") || id.contains("date") {
+        if id.contains("creationdate") || id.contains("creation_date") || id.contains("date") {
             return .creationDate
         }
         if id.contains("title") || id.contains("artist") || id.contains("album")
