@@ -136,41 +136,109 @@ public enum AVMetadataScrub {
         return found
     }
 
-    /// Export a copy with no metadata, then verify it.
+    /// Write a copy carrying no metadata, then verify it.
     ///
-    /// Passthrough preset: the audio and video are copied, not re-encoded, so
-    /// there is no quality loss. Metadata is dropped by handing the export an
-    /// empty list rather than by editing the original.
+    /// NOT `AVAssetExportSession`. Setting `session.metadata = []` means "add
+    /// nothing", not "remove what is there" — with the passthrough preset the
+    /// original location, make and model come straight through. That is not
+    /// documented anywhere obvious and was found by the verification step
+    /// failing, which is the second time in this feature that an Apple API
+    /// carried metadata across when asked not to.
+    ///
+    /// So the file is REMUXED instead: the compressed samples are read and
+    /// written into a fresh container. Nothing is copied except the media
+    /// itself, so nothing can survive. It is still lossless — the samples are
+    /// passed through untouched, never re-encoded.
     public static func scrub(_ input: URL, to output: URL) async throws -> Report {
-        let asset = AVURLAsset(url: input)
         let found = try await inspect(input)
-
-        guard try await !asset.load(.tracks).isEmpty else {
-            throw ScrubError.noExportableTrack
-        }
-
-        guard let session = AVAssetExportSession(
-            asset: asset, presetName: AVAssetExportPresetPassthrough) else {
-            throw ScrubError.exportFailed("no passthrough preset for this file")
-        }
-
-        try? FileManager.default.removeItem(at: output)
-        session.outputURL = output
-        session.outputFileType = fileType(for: input)
-        // The strip itself: an empty list, not a filtered one. Filtering keeps
-        // whatever the filter did not think of.
-        session.metadata = []
-
-        await session.export()
-
-        guard session.status == .completed else {
-            throw ScrubError.exportFailed(session.error?.localizedDescription
-                                          ?? "export did not complete")
-        }
+        try await remux(input, to: output)
 
         // The step that justifies telling the user anything.
         let remaining = (try? await inspect(output)) ?? found
         return Report(found: found, remaining: remaining)
+    }
+
+    static func remux(_ input: URL, to output: URL) async throws {
+        let asset = AVURLAsset(url: input)
+        let tracks: [AVAssetTrack]
+        do {
+            tracks = try await asset.load(.tracks)
+        } catch {
+            throw ScrubError.unreadable(error.localizedDescription)
+        }
+        guard !tracks.isEmpty else { throw ScrubError.noExportableTrack }
+
+        try? FileManager.default.removeItem(at: output)
+
+        let reader: AVAssetReader
+        let writer: AVAssetWriter
+        do {
+            reader = try AVAssetReader(asset: asset)
+            writer = try AVAssetWriter(outputURL: output, fileType: fileType(for: output))
+        } catch {
+            throw ScrubError.exportFailed(error.localizedDescription)
+        }
+        // Nothing is carried over; only what is set here ends up in the file.
+        writer.metadata = []
+
+        var pairs: [(AVAssetReaderTrackOutput, AVAssetWriterInput)] = []
+        for track in tracks {
+            // `outputSettings: nil` on both sides means the compressed samples
+            // are handed across untouched — a remux, not a re-encode.
+            let readerOutput = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+            readerOutput.alwaysCopiesSampleData = false
+            guard reader.canAdd(readerOutput) else { continue }
+            reader.add(readerOutput)
+
+            let formats = (try? await track.load(.formatDescriptions)) ?? []
+            let writerInput = AVAssetWriterInput(mediaType: track.mediaType,
+                                                 outputSettings: nil,
+                                                 sourceFormatHint: formats.first)
+            writerInput.expectsMediaDataInRealTime = false
+            guard writer.canAdd(writerInput) else { continue }
+            writer.add(writerInput)
+
+            pairs.append((readerOutput, writerInput))
+        }
+        guard !pairs.isEmpty else { throw ScrubError.noExportableTrack }
+
+        guard writer.startWriting() else {
+            throw ScrubError.exportFailed(writer.error?.localizedDescription ?? "writer refused to start")
+        }
+        guard reader.startReading() else {
+            throw ScrubError.exportFailed(reader.error?.localizedDescription ?? "reader refused to start")
+        }
+        writer.startSession(atSourceTime: .zero)
+
+        for (readerOutput, writerInput) in pairs {
+            let queue = DispatchQueue(label: "nl.pietjepuh.toolbelt.remux")
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                // requestMediaDataWhenReady calls back repeatedly; the flag
+                // keeps the continuation to exactly one resume.
+                let finished = ManagedAtomicFlag()
+                writerInput.requestMediaDataWhenReady(on: queue) {
+                    while writerInput.isReadyForMoreMediaData {
+                        guard let buffer = readerOutput.copyNextSampleBuffer() else {
+                            writerInput.markAsFinished()
+                            if finished.setIfUnset() { continuation.resume() }
+                            return
+                        }
+                        if !writerInput.append(buffer) {
+                            writerInput.markAsFinished()
+                            if finished.setIfUnset() { continuation.resume() }
+                            return
+                        }
+                    }
+                }
+            }
+        }
+
+        await writer.finishWriting()
+
+        guard writer.status == .completed else {
+            throw ScrubError.exportFailed(writer.error?.localizedDescription
+                                          ?? "writing did not complete")
+        }
     }
 
     static func fileType(for url: URL) -> AVFileType {
@@ -183,5 +251,22 @@ public enum AVMetadataScrub {
         case "aiff", "aif": return .aiff
         default:            return .mp4
         }
+    }
+}
+
+/// One-shot flag. `requestMediaDataWhenReady` invokes its block repeatedly and
+/// from an arbitrary queue, so resuming a continuation from inside it needs a
+/// guard — resuming twice is a crash, not a warning.
+final class ManagedAtomicFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var set = false
+
+    /// Returns true exactly once, for the first caller.
+    func setIfUnset() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if set { return false }
+        set = true
+        return true
     }
 }

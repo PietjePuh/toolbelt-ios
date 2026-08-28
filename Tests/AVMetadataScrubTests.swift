@@ -193,9 +193,29 @@ final class AVMetadataScrubIntegrationTests: XCTestCase {
                        "the report must describe the file, not the intention")
     }
 
+    func testExportSessionWouldNotHaveWorked() async throws {
+        // Recorded because it is genuinely surprising and cost a CI round:
+        // AVAssetExportSession with `metadata = []` and the passthrough preset
+        // carries the ORIGINAL metadata straight through. An empty list means
+        // "add nothing", not "remove what is there".
+        let source = try await makeMovie()
+        let viaExport = temporary.appendingPathComponent("via-export.mov")
+        let asset = AVURLAsset(url: source)
+        let session = try XCTUnwrap(AVAssetExportSession(
+            asset: asset, presetName: AVAssetExportPresetPassthrough))
+        session.outputURL = viaExport
+        session.outputFileType = .mov
+        session.metadata = []
+        await session.export()
+
+        let leftovers = try await AVMetadataScrub.inspect(viaExport)
+        XCTAssertTrue(leftovers.contains { $0.category == .location },
+                      "if this ever stops being true, the remux can be replaced by an export session")
+    }
+
     func testTheVideoItselfSurvives() async throws {
         // A scrubber that produces an unplayable file has solved the wrong
-        // problem. Passthrough means the track is copied, not re-encoded.
+        // problem. The remux copies compressed samples, so no re-encode.
         let source = try await makeMovie()
         let output = temporary.appendingPathComponent("clean3.mov")
         _ = try await AVMetadataScrub.scrub(source, to: output)
